@@ -40,7 +40,7 @@
 
 #include "ocean.h"
 
-#include <array>
+#include <vector>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -64,9 +64,9 @@ typedef SbtRecord<HitGroupData>   HitGroupSbtRecord;
 
 void configureCamera(sutil::Camera& cam, const uint32_t width, const uint32_t height)
 {
-    cam.setEye({ 0.0f, 0.0f, 2.0f });
+    cam.setEye({ 0.0f, 2.0f, .0f });
     cam.setLookat({ 0.0f, 0.0f, 0.0f });
-    cam.setUp({ 0.0f, 1.0f, 3.0f });
+    cam.setUp({ 0.0f, 0.0f, 1.0f });
     cam.setFovY(45.0f);
     cam.setAspectRatio((float)width / (float)height);
 }
@@ -129,7 +129,47 @@ int main(int argc, char* argv[])
     {
         char log[2048]; // For error reporting from OptiX creation functions
 
+        int N = 100;
+        int Nplus1 = N + 1;
 
+        struct Vertex {
+            float3 pos;
+            float3 normal;
+        };
+
+        std::vector<Vertex> vertices(Nplus1 * Nplus1);
+        std::vector<uint32_t> indices;
+
+        int index;
+        int length = 1;
+        {
+            for (int m_prime = 0; m_prime < Nplus1; m_prime++) {
+                for (int n_prime = 0; n_prime < Nplus1; n_prime++) {
+                    index = m_prime * Nplus1 + n_prime;
+
+                    vertices[index].pos.x = (n_prime - N / 2.0f) * length / N;
+                    vertices[index].pos.y = 0.0f;
+                    vertices[index].pos.z = (m_prime - N / 2.0f) * length / N;
+
+                    vertices[index].normal.x = 0.0f;
+                    vertices[index].normal.y = 1.0f;
+                    vertices[index].normal.z = 0.0f;
+                }
+            }
+
+            for (int m_prime = 0; m_prime < N; m_prime++) {
+                for (int n_prime = 0; n_prime < N; n_prime++) {
+                    index = m_prime * Nplus1 + n_prime;
+
+                    indices.push_back(index);               // two triangles
+                    indices.push_back(index + Nplus1);
+                    indices.push_back(index + Nplus1 + 1);
+                    indices.push_back(index);
+                    indices.push_back(index + Nplus1 + 1);
+                    indices.push_back(index + 1);
+                }
+            }
+        }
         //
         // Initialize CUDA and create OptiX context
         //
@@ -157,15 +197,7 @@ int main(int argc, char* argv[])
             accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
             accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-            // Triangle build input
-            const std::array<float3, 3> vertices =
-            { {
-                  { -0.5f, -0.5f, 0.0f },
-                  {  0.5f, -0.5f, 0.0f },
-                  {  0.0f,  0.5f, 0.0f }
-            } };
-
-            const size_t vertices_size = sizeof(float3) * vertices.size();
+            const size_t vertices_size = sizeof(Vertex) * vertices.size();
             CUdeviceptr d_vertices = 0;
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_vertices), vertices_size));
             CUDA_CHECK(cudaMemcpy(
@@ -175,12 +207,27 @@ int main(int argc, char* argv[])
                 cudaMemcpyHostToDevice
             ));
 
+            const size_t indices_size = 4 * indices.size();
+            CUdeviceptr d_indices = 0;
+            CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_indices), indices_size));
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void*>(d_indices),
+                indices.data(),
+                indices_size,
+                cudaMemcpyHostToDevice
+            ));
+
             const uint32_t triangle_input_flags[1] = { OPTIX_GEOMETRY_FLAG_NONE };
             OptixBuildInput triangle_input = {};
             triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
             triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
             triangle_input.triangleArray.numVertices = static_cast<uint32_t>(vertices.size());
+            triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
             triangle_input.triangleArray.vertexBuffers = &d_vertices;
+            triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+            triangle_input.triangleArray.indexStrideInBytes = 12;
+            triangle_input.triangleArray.numIndexTriplets = indices.size() / 3;
+            triangle_input.triangleArray.indexBuffer = d_indices;
             triangle_input.triangleArray.flags = triangle_input_flags;
             triangle_input.triangleArray.numSbtRecords = 1;
 
