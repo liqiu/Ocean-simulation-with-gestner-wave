@@ -31,7 +31,7 @@
 
 struct Params
 {
-    uchar4*                image;
+    uchar4* image;
     uint32_t               image_width;
     uint32_t               image_height;
     int32_t                origin_x;

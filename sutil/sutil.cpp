@@ -703,7 +703,7 @@ static std::string samplePTXFilePath( const char* sampleName, const char* fileNa
     std::string error = "sutil::samplePTXFilePath couldn't locate ";
     error += fileName;
     error += " for sample ";
-    error += sampleName;
+    //error += sampleName;
     throw Exception( error.c_str() );
 }
 
