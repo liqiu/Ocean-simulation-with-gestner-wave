@@ -29,10 +29,6 @@ include_directories(
   )
   
 target_link_libraries( ${target_name}
-  glfw
-  cudart
-  imgui
-  glad
   sutil_7_sdk
   )
   

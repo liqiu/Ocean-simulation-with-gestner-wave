@@ -41,6 +41,8 @@ if( WARNINGS_AS_ERRORS AND (USING_GNU_CXX OR USING_CLANG_CXX))
   string( REPLACE "-Wsign-compare" "" filtered_c_flags ${filtered_c_flags} )
   push_variable( CMAKE_C_FLAGS "${filtered_c_flags} -Wno-format-truncation -Wno-deprecated" )
 endif()
+
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 add_subdirectory( GLFW )
 set_property( TARGET glfw PROPERTY C_STANDARD 99 )
 if( WARNINGS_AS_ERRORS AND (USING_GNU_CXX OR USING_CLANG_CXX))

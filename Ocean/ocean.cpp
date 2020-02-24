@@ -47,8 +47,24 @@
 
 #include <sutil/Camera.h>
 #include <sutil/Trackball.h>
+#include <sutil/GLDisplay.h>
+
+#include <GLFW/glfw3.h>
 
 
+bool              resize_dirty = false;
+bool              camera_changed = true;
+sutil::Camera cam;
+sutil::Trackball  trackball;
+int32_t           mouse_button = -1;
+int32_t                 width = 768;
+int32_t                 height = 768;
+
+CUdeviceptr d_param;
+Params   params = {};
+OptixShaderBindingTable sbt = {};
+OptixTraversableHandle gas_handle;
+OptixPipeline pipeline = nullptr;
 
 template <typename T>
 struct SbtRecord
@@ -62,13 +78,94 @@ typedef SbtRecord<MissData>       MissSbtRecord;
 typedef SbtRecord<HitGroupData>   HitGroupSbtRecord;
 
 
+
+//------------------------------------------------------------------------------
+//
+// GLFW callbacks
+//
+//------------------------------------------------------------------------------
+
+static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+
+    if (action == GLFW_PRESS)
+    {
+        mouse_button = button;
+        trackball.startTracking(static_cast<int>(xpos), static_cast<int>(ypos));
+    }
+    else
+    {
+        mouse_button = -1;
+    }
+}
+
+
+static void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    if (mouse_button == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        trackball.setViewMode(sutil::Trackball::LookAtFixed);
+        trackball.updateTracking(static_cast<int>(xpos), static_cast<int>(ypos), width, height);
+        camera_changed = true;
+    }
+    else if (mouse_button == GLFW_MOUSE_BUTTON_RIGHT)
+    {
+        trackball.setViewMode(sutil::Trackball::EyeFixed);
+        trackball.updateTracking(static_cast<int>(xpos), static_cast<int>(ypos), width, height);
+        camera_changed = true;
+    }
+}
+
+
+static void windowSizeCallback(GLFWwindow* window, int32_t res_x, int32_t res_y)
+{
+    width = res_x;
+    height = res_y;
+    camera_changed = true;
+    resize_dirty = true;
+}
+
+
+static void keyCallback(GLFWwindow* window, int32_t key, int32_t /*scancode*/, int32_t action, int32_t /*mods*/)
+{
+    if (action == GLFW_PRESS)
+    {
+        if (key == GLFW_KEY_Q ||
+            key == GLFW_KEY_ESCAPE)
+        {
+            glfwSetWindowShouldClose(window, true);
+        }
+    }
+    else if (key == GLFW_KEY_G)
+    {
+        // toggle UI draw
+    }
+}
+
+
+static void scrollCallback(GLFWwindow* window, double xscroll, double yscroll)
+{
+    if (trackball.wheelEvent((int)yscroll))
+        camera_changed = true;
+}
+
+
 void configureCamera(sutil::Camera& cam, const uint32_t width, const uint32_t height)
 {
-    cam.setEye({ 0.0f, 2.0f, .0f });
+    cam.setEye({ 0.0f, 0.0f, 3.0f });
     cam.setLookat({ 0.0f, 0.0f, 0.0f });
-    cam.setUp({ 0.0f, 0.0f, 1.0f });
+    cam.setUp({ 0.0f, 1.0f, 0.0f });
     cam.setFovY(45.0f);
     cam.setAspectRatio((float)width / (float)height);
+
+    trackball.setCamera(&cam);
+    trackball.setMoveSpeed(10.0f);
+    trackball.setReferenceFrame(make_float3(1.0f, 0.0f, 0.0f),
+        make_float3(0.0f, 0.0f, 1.0f),
+        make_float3(0.0f, 1.0f, 0.0f));
+    trackball.setGimbalLock(true);
 }
 
 
@@ -88,12 +185,74 @@ static void context_log_cb(unsigned int level, const char* tag, const char* mess
         << message << "\n";
 }
 
+void initLaunchParams() {
+    params.image_width = width;
+    params.image_height = height;
+    params.origin_x = width / 2;
+    params.origin_y = height / 2;
+    params.handle = gas_handle;
+
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_param), sizeof(Params)));
+}
+
+void updateState(sutil::CUDAOutputBuffer<uchar4>& output_buffer, Params& params)
+{
+    // Update params on device
+  //  if (camera_changed || resize_dirty)
+    //    params.subframe_index = 0;
+
+    //handleCameraUpdate(params);
+}
+
+void launchSubframe(sutil::CUDAOutputBuffer<uchar4>& output_buffer)
+{
+
+    // Launch
+    uchar4* result_buffer_data = output_buffer.map();
+    params.image = result_buffer_data;
+    CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_param),
+        &params,
+        sizeof(Params),
+        cudaMemcpyHostToDevice,
+        0 // stream
+    ));
+
+    OPTIX_CHECK(optixLaunch(
+        pipeline,
+        0,             // stream
+        d_param,
+        sizeof(Params),
+        &sbt,
+        width,  // launch width
+        height, // launch height
+        1       // launch depth
+    ));
+    output_buffer.unmap();
+    CUDA_SYNC_CHECK();
+}
+
+void displaySubframe(
+    sutil::CUDAOutputBuffer<uchar4>& output_buffer,
+    sutil::GLDisplay& gl_display,
+    GLFWwindow* window)
+{
+    // Display
+    int framebuf_res_x = 0;   // The display's resolution (could be HDPI res)
+    int framebuf_res_y = 0;   //
+    glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
+    gl_display.display(
+        output_buffer.width(),
+        output_buffer.height(),
+        framebuf_res_x,
+        framebuf_res_y,
+        output_buffer.getPBO()
+    );
+}
+
 
 int main(int argc, char* argv[])
 {
     std::string outfile;
-    int         width = 1024;
-    int         height = 768;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -143,12 +302,16 @@ int main(int argc, char* argv[])
         int index;
         int length = 1;
         {
+            float t = 0.f, f = 1.f, r = 0.1, lamda = 0.1f, x0, y0 = 0.f;
+            float w = 2 * M_PIf * f, k = 2 * M_PIf / lamda;
             for (int m_prime = 0; m_prime < Nplus1; m_prime++) {
                 for (int n_prime = 0; n_prime < Nplus1; n_prime++) {
                     index = m_prime * Nplus1 + n_prime;
 
-                    vertices[index].pos.x = (n_prime - N / 2.0f) * length / N;
-                    vertices[index].pos.y = 0.0f;
+                    x0 = (n_prime - N / 2.0f) * length / N;
+
+                    vertices[index].pos.x = x0 + r * sin(w * t - k * x0);
+                    vertices[index].pos.y = y0 + r * cos(w * t - k * y0);
                     vertices[index].pos.z = (m_prime - N / 2.0f) * length / N;
 
                     vertices[index].normal.x = 0.0f;
@@ -190,7 +353,7 @@ int main(int argc, char* argv[])
         //
         // accel handling
         //
-        OptixTraversableHandle gas_handle;
+        //OptixTraversableHandle gas_handle;
         CUdeviceptr            d_gas_output_buffer;
         {
             OptixAccelBuildOptions accel_options = {};
@@ -377,7 +540,7 @@ int main(int argc, char* argv[])
         //
         // Link pipeline
         //
-        OptixPipeline pipeline = nullptr;
+        //OptixPipeline pipeline = nullptr;
         {
             OptixProgramGroup program_groups[] = { raygen_prog_group, miss_prog_group, hitgroup_prog_group };
 
@@ -401,12 +564,11 @@ int main(int argc, char* argv[])
         //
         // Set up shader binding table
         //
-        OptixShaderBindingTable sbt = {};
         {
             CUdeviceptr  raygen_record;
             const size_t raygen_record_size = sizeof(RayGenSbtRecord);
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&raygen_record), raygen_record_size));
-            sutil::Camera cam;
+        
             configureCamera(cam, width, height);
             RayGenSbtRecord rg_sbt;
             rg_sbt.data = {};
@@ -455,52 +617,54 @@ int main(int argc, char* argv[])
             sbt.hitgroupRecordCount = 1;
         }
 
+        initLaunchParams();
+
+        GLFWwindow* window = sutil::initUI("ocean", width, height);
+        glfwSwapBuffers(window);
         sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
 
-        //
-        // launch
-        //
+        glfwSetMouseButtonCallback(window, mouseButtonCallback);
+        glfwSetCursorPosCallback(window, cursorPosCallback);
+        glfwSetWindowSizeCallback(window, windowSizeCallback);
+        glfwSetKeyCallback(window, keyCallback);
+        glfwSetScrollCallback(window, scrollCallback);
+        glfwSetWindowUserPointer(window, &params);
+
         {
-            CUstream stream;
-            CUDA_CHECK(cudaStreamCreate(&stream));
+            sutil::GLDisplay gl_display;
 
-            Params params;
-            params.image = output_buffer.map();
-            params.image_width = width;
-            params.image_height = height;
-            params.origin_x = width / 2;
-            params.origin_y = height / 2;
-            params.handle = gas_handle;
+            std::chrono::duration<double> state_update_time(0.0);
+            std::chrono::duration<double> render_time(0.0);
+            std::chrono::duration<double> display_time(0.0);
 
-            CUdeviceptr d_param;
-            CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_param), sizeof(Params)));
-            CUDA_CHECK(cudaMemcpy(
-                reinterpret_cast<void*>(d_param),
-                &params, sizeof(params),
-                cudaMemcpyHostToDevice
-            ));
+            do
+            {
+                auto t0 = std::chrono::steady_clock::now();
+                glfwPollEvents();
 
-            OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, width, height, /*depth=*/1));
+                updateState(output_buffer, params);
+                auto t1 = std::chrono::steady_clock::now();
+                state_update_time += t1 - t0;
+                t0 = t1;
+
+                launchSubframe(output_buffer);
+                t1 = std::chrono::steady_clock::now();
+                render_time += t1 - t0;
+                t0 = t1;
+
+                displaySubframe(output_buffer, gl_display, window);
+                t1 = std::chrono::steady_clock::now();
+                display_time += t1 - t0;
+
+                sutil::displayStats(state_update_time, render_time, display_time);
+
+                glfwSwapBuffers(window);
+
+            } while (!glfwWindowShouldClose(window));
             CUDA_SYNC_CHECK();
-
-            output_buffer.unmap();
         }
 
-        //
-        // Display results
-        //
-        {
-            sutil::ImageBuffer buffer;
-            buffer.data = output_buffer.getHostPointer();
-            buffer.width = width;
-            buffer.height = height;
-            buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
-            if (outfile.empty())
-                sutil::displayBufferWindow(argv[0], buffer);
-            else
-                sutil::displayBufferFile(outfile.c_str(), buffer, false);
-        }
-
+        sutil::cleanupUI(window);
         //
         // Cleanup
         //

@@ -616,6 +616,7 @@ GLFWAPI void glfwSwapBuffers(GLFWwindow* handle)
         return;
     }
 
+
     window->context.swapBuffers(window);
 }
 

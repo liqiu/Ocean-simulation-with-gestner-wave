@@ -43,26 +43,16 @@ if( WIN32 )
 endif()
 
 
-target_link_libraries(${sutil_target} LINK_PRIVATE
-  ${GLFW_LIB_NAME}
+target_link_libraries(${sutil_target}
   glad
   imgui
   cudart
   )
 	
-# Use gcc rather than g++ to link if we are linking statically against libgcc_s and libstdc++
-if(USING_GNU_C OR USING_GNU_CXX)
-  if(GCC_LIBSTDCPP_HACK)
-    set_target_properties(${sutil_target} PROPERTIES LINKER_LANGUAGE "C")
-    target_link_libraries(${sutil_target} LINK_PRIVATE ${STATIC_LIBSTDCPP})
-  endif()
-endif()
-
 if(WIN32)
-  target_link_libraries(${sutil_target} LINK_PRIVATE winmm.lib)
+  target_link_libraries(${sutil_target} winmm.lib)
 endif()
 
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math -arch sm_50 -lineinfo --keep-device-functions -rdc=true")
 set(optix_target "sutil_optix_module")
 add_library(${optix_target} OBJECT ${SAMPLES_CUDA_DIR}/whitted.cu)
 set_property(TARGET ${optix_target} PROPERTY CUDA_PTX_COMPILATION ON)
