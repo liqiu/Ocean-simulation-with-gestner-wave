@@ -77,7 +77,9 @@ typedef SbtRecord<RayGenData>     RayGenSbtRecord;
 typedef SbtRecord<MissData>       MissSbtRecord;
 typedef SbtRecord<HitGroupData>   HitGroupSbtRecord;
 
-
+const size_t raygen_record_size = sizeof(RayGenSbtRecord);
+CUdeviceptr  raygen_record;
+RayGenSbtRecord rg_sbt;
 
 //------------------------------------------------------------------------------
 //
@@ -202,6 +204,14 @@ void updateState(sutil::CUDAOutputBuffer<uchar4>& output_buffer, Params& params)
     //    params.subframe_index = 0;
 
     //handleCameraUpdate(params);
+    rg_sbt.data.cam_eye = cam.eye();
+    cam.UVWFrame(rg_sbt.data.camera_u, rg_sbt.data.camera_v, rg_sbt.data.camera_w);
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(raygen_record),
+        &rg_sbt,
+        raygen_record_size,
+        cudaMemcpyHostToDevice
+    ));
 }
 
 void launchSubframe(sutil::CUDAOutputBuffer<uchar4>& output_buffer)
@@ -565,12 +575,12 @@ int main(int argc, char* argv[])
         // Set up shader binding table
         //
         {
-            CUdeviceptr  raygen_record;
-            const size_t raygen_record_size = sizeof(RayGenSbtRecord);
+            //CUdeviceptr  raygen_record;
+            //const size_t raygen_record_size = sizeof(RayGenSbtRecord);
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&raygen_record), raygen_record_size));
         
             configureCamera(cam, width, height);
-            RayGenSbtRecord rg_sbt;
+            //RayGenSbtRecord rg_sbt;
             rg_sbt.data = {};
             rg_sbt.data.cam_eye = cam.eye();
             cam.UVWFrame(rg_sbt.data.camera_u, rg_sbt.data.camera_v, rg_sbt.data.camera_w);
