@@ -312,7 +312,7 @@ int main(int argc, char* argv[])
         int index;
         int length = 1;
         {
-            float t = 0.f, f = 1.f, r = 0.1, lamda = 0.1f, x0, y0 = 0.f;
+            float t = 0.f, f = 10.f, amplitude = 0.1, lamda = 0.5f, x0, y0 = 0.f;
             float w = 2 * M_PIf * f, k = 2 * M_PIf / lamda;
             for (int m_prime = 0; m_prime < Nplus1; m_prime++) {
                 for (int n_prime = 0; n_prime < Nplus1; n_prime++) {
@@ -320,8 +320,8 @@ int main(int argc, char* argv[])
 
                     x0 = (n_prime - N / 2.0f) * length / N;
 
-                    vertices[index].pos.x = x0 + r * sin(w * t - k * x0);
-                    vertices[index].pos.y = y0 + r * cos(w * t - k * y0);
+                    vertices[index].pos.x = x0 + amplitude * sin(w * t - k * x0);
+                    vertices[index].pos.y = y0 + amplitude * cos(w * t - k * x0);
                     vertices[index].pos.z = (m_prime - N / 2.0f) * length / N;
 
                     vertices[index].normal.x = 0.0f;
