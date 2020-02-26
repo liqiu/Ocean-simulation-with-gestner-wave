@@ -39,6 +39,7 @@
 #include <sutil/sutil.h>
 
 #include "ocean.h"
+#include "ocean_kernel.h"
 
 #include <vector>
 #include <iomanip>
@@ -260,6 +261,7 @@ void displaySubframe(
 }
 
 
+
 int main(int argc, char* argv[])
 {
     std::string outfile;
@@ -298,13 +300,25 @@ int main(int argc, char* argv[])
     {
         char log[2048]; // For error reporting from OptiX creation functions
 
+        //
+        // Initialize CUDA and create OptiX context
+        //
+        OptixDeviceContext context = nullptr;
+        {
+            // Initialize CUDA
+            CUDA_CHECK(cudaFree(0));
+
+            CUcontext cuCtx = 0;  // zero means take the current context
+            OPTIX_CHECK(optixInit());
+            OptixDeviceContextOptions options = {};
+            options.logCallbackFunction = &context_log_cb;
+            options.logCallbackLevel = 4;
+            OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &context));
+        }
+
+        /*
         int N = 100;
         int Nplus1 = N + 1;
-
-        struct Vertex {
-            float3 pos;
-            float3 normal;
-        };
 
         std::vector<Vertex> vertices(Nplus1 * Nplus1);
         std::vector<uint32_t> indices;
@@ -312,8 +326,9 @@ int main(int argc, char* argv[])
         int index;
         int length = 1;
         {
-            float t = 0.f, f = 10.f, amplitude = 0.1, lamda = 0.5f, x0, y0 = 0.f;
+            float t = 0.5f, f =1.f, amplitude = 0.1, lamda = 0.5f, x0, y0 = 0.f;
             float w = 2 * M_PIf * f, k = 2 * M_PIf / lamda;
+            
             for (int m_prime = 0; m_prime < Nplus1; m_prime++) {
                 for (int n_prime = 0; n_prime < Nplus1; n_prime++) {
                     index = m_prime * Nplus1 + n_prime;
@@ -342,64 +357,54 @@ int main(int argc, char* argv[])
                     indices.push_back(index + 1);
                 }
             }
-        }
-        //
-        // Initialize CUDA and create OptiX context
-        //
-        OptixDeviceContext context = nullptr;
-        {
-            // Initialize CUDA
-            CUDA_CHECK(cudaFree(0));
-
-            CUcontext cuCtx = 0;  // zero means take the current context
-            OPTIX_CHECK(optixInit());
-            OptixDeviceContextOptions options = {};
-            options.logCallbackFunction = &context_log_cb;
-            options.logCallbackLevel = 4;
-            OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &context));
-        }
-
+        }*/
 
         //
         // accel handling
         //
         //OptixTraversableHandle gas_handle;
+        CUdeviceptr d_vertices = 0;
+        CUdeviceptr d_indices = 0;
+        float t = 0.f, f = 1.f, amplitude = 0.1, lamda = 0.5f, length = 1.f;
         CUdeviceptr            d_gas_output_buffer;
         {
             OptixAccelBuildOptions accel_options = {};
             accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
             accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-            const size_t vertices_size = sizeof(Vertex) * vertices.size();
-            CUdeviceptr d_vertices = 0;
+            int Nplus1 = 96;
+            const size_t vertices_size = Nplus1 * Nplus1 * sizeof(Vertex);// *vertices.size();
+            
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_vertices), vertices_size));
-            CUDA_CHECK(cudaMemcpy(
+          /*  CUDA_CHECK(cudaMemcpy(
                 reinterpret_cast<void*>(d_vertices),
                 vertices.data(),
                 vertices_size,
                 cudaMemcpyHostToDevice
-            ));
+            ));*/
 
-            const size_t indices_size = 4 * indices.size();
-            CUdeviceptr d_indices = 0;
+            const size_t indices_size = 4 * (Nplus1 - 1) * (Nplus1 - 1) * 6;// indices.size();
+            
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_indices), indices_size));
-            CUDA_CHECK(cudaMemcpy(
+            /*CUDA_CHECK(cudaMemcpy(
                 reinterpret_cast<void*>(d_indices),
                 indices.data(),
                 indices_size,
                 cudaMemcpyHostToDevice
-            ));
+            ));*/
+            
+            cudaGenerateGridMesh(reinterpret_cast<Vertex*>(d_vertices), reinterpret_cast<unsigned int*>(d_indices), amplitude, lamda, f, 96, length, t);
 
             const uint32_t triangle_input_flags[1] = { OPTIX_GEOMETRY_FLAG_NONE };
             OptixBuildInput triangle_input = {};
             triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
             triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-            triangle_input.triangleArray.numVertices = static_cast<uint32_t>(vertices.size());
+            triangle_input.triangleArray.numVertices = vertices_size;
             triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
             triangle_input.triangleArray.vertexBuffers = &d_vertices;
             triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
             triangle_input.triangleArray.indexStrideInBytes = 12;
-            triangle_input.triangleArray.numIndexTriplets = indices.size() / 3;
+            triangle_input.triangleArray.numIndexTriplets = indices_size / 3;
             triangle_input.triangleArray.indexBuffer = d_indices;
             triangle_input.triangleArray.flags = triangle_input_flags;
             triangle_input.triangleArray.numSbtRecords = 1;
@@ -647,6 +652,8 @@ int main(int argc, char* argv[])
             std::chrono::duration<double> render_time(0.0);
             std::chrono::duration<double> display_time(0.0);
 
+            auto t00 = std::chrono::steady_clock::now();
+            typedef std::chrono::duration<double, std::milli> durationMs;
             do
             {
                 auto t0 = std::chrono::steady_clock::now();
@@ -656,6 +663,9 @@ int main(int argc, char* argv[])
                 auto t1 = std::chrono::steady_clock::now();
                 state_update_time += t1 - t0;
                 t0 = t1;
+
+                t = std::chrono::duration<float>(t0 - t00).count();
+                //cudaUpdateGridMesh(reinterpret_cast<Vertex*>(d_vertices), amplitude, lamda, f, 96, length, 0.f);
 
                 launchSubframe(output_buffer);
                 t1 = std::chrono::steady_clock::now();

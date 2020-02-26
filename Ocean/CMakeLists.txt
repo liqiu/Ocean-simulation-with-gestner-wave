@@ -15,6 +15,8 @@ add_executable(
     ${target_name}
     ${SOURCE_FILES}
     )
+	
+set_property(TARGET ${target_name} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/CMake")
 set(OptiX_INSTALL_DIR "${PROJECT_SOURCE_DIR}/Externals/optix" CACHE PATH "Path to OptiX installed location.")
@@ -34,7 +36,7 @@ target_link_libraries( ${target_name}
   
 # Optix Module
 file(GLOB_RECURSE  CUDA_FILES "*ocean.cu")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math -arch sm_50 -lineinfo --keep-device-functions -rdc=true")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math -arch sm_50 -lineinfo --keep-device-functions")
 set(optix_target "ocean_optix_module")
 add_library(${optix_target} OBJECT ${CUDA_FILES})
 set_property(TARGET ${optix_target} PROPERTY CUDA_PTX_COMPILATION ON)
