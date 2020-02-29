@@ -7,11 +7,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY
+    ${PROJECT_BINARY_DIR}/lib CACHE
+    PATH "Directory where all the .lib files are dumped." FORCE)
+	
+SET(LIBRARY_OUTPUT_DIRECTORY
+    ${PROJECT_BINARY_DIR}/lib CACHE
+    PATH "Directory where all the .lib files are dumped." FORCE)
+	
+SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY
+    ${PROJECT_BINARY_DIR}/bin CACHE
+    PATH "Directory where .exe and .dll files are dumped." FORCE)
+
 set(CMAKE_MODULE_PATH
   "${CMAKE_SOURCE_DIR}/CMake"
   ${CMAKE_MODULE_PATH}
   )
 include (CompilerInfo)
+
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/CMake")
+set(OptiX_INSTALL_DIR "${PROJECT_SOURCE_DIR}/Externals/optix" CACHE PATH "Path to OptiX installed location.")
+find_package(OptiX REQUIRED)
 
 set(SAMPLES_PTX_DIR "${CMAKE_BINARY_DIR}/bin/ptx/objects-Debug/sutil_optix_module\", \\
 	\"${CMAKE_BINARY_DIR}/bin/ptx/objects-Debug/ocean_optix_module")

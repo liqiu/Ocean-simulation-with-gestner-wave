@@ -30,7 +30,7 @@ set(sources
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/..
 	${CMAKE_CURRENT_BINARY_DIR}/..
-	 "${OptiX_INCLUDE}"
+	"${OptiX_INCLUDE}"
 	 )
 
 

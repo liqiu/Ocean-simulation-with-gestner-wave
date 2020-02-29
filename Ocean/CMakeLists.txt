@@ -7,7 +7,7 @@ file(GLOB_RECURSE  SOURCE_FILES
     "*.frag"
     "*.cu"
 )
-list(FILTER SOURCE_FILES EXCLUDE REGEX "ocean.cu$")
+list(FILTER SOURCE_FILES EXCLUDE REGEX "Ocean.cu$")
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCE_FILES})
 					   
@@ -17,10 +17,6 @@ add_executable(
     )
 	
 set_property(TARGET ${target_name} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/CMake")
-set(OptiX_INSTALL_DIR "${PROJECT_SOURCE_DIR}/Externals/optix" CACHE PATH "Path to OptiX installed location.")
-find_package(OptiX REQUIRED)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -32,6 +28,7 @@ include_directories(
   
 target_link_libraries( ${target_name}
   sutil_7_sdk
+  
   )
   
 # Optix Module

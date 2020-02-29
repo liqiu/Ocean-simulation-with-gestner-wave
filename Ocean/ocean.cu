@@ -1,36 +1,10 @@
-//
-// Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions
-// are met:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of NVIDIA CORPORATION nor the names of its
-//    contributors may be used to endorse or promote products derived
-//    from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
-// OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-
 #include <optix.h>
 
 #include "ocean.h"
 
 #include <sutil/vec_math.h>
+
+#include <cuda/random.h>
 
 extern "C" {
     __constant__ Params params;
@@ -100,20 +74,29 @@ __forceinline__ __device__ uchar4 make_color(const float3& c)
 
 extern "C" __global__ void __raygen__rg()
 {
-    const uint3 idx = optixGetLaunchIndex();
-    const uint3 dim = optixGetLaunchDimensions();
+    const uint3  launch_idx = optixGetLaunchIndex();
+    const uint3  launch_dims = optixGetLaunchDimensions();
+    const float3 eye = params.eye;
+    const float3 U = params.U;
+    const float3 V = params.V;
+    const float3 W = params.W;
+    const int    subframe_index = params.subframe_index;
+    //
+    // Generate camera ray
+    //
+    uint32_t seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframe_index);
 
-    const RayGenData* rtData = (RayGenData*)optixGetSbtDataPointer();
-    const float3      U = rtData->camera_u;
-    const float3      V = rtData->camera_v;
-    const float3      W = rtData->camera_w;
-    const float2      d = 2.0f * make_float2(
-        static_cast<float>(idx.x) / static_cast<float>(dim.x),
-        static_cast<float>(idx.y) / static_cast<float>(dim.y)
+    const float2 subpixel_jitter = subframe_index == 0 ?
+        make_float2(0.0f, 0.0f) :
+        make_float2(rnd(seed) - 0.5f, rnd(seed) - 0.5f);
+
+    const float2 d = 2.0f * make_float2(
+        (static_cast<float>(launch_idx.x) + subpixel_jitter.x) / static_cast<float>(launch_dims.x),
+        (static_cast<float>(launch_idx.y) + subpixel_jitter.y) / static_cast<float>(launch_dims.y)
     ) - 1.0f;
-
-    const float3 origin = rtData->cam_eye;
     const float3 direction = normalize(d.x * U + d.y * V + W);
+    const float3 origin = eye;
+
     float3       payload_rgb = make_float3(0.5f, 0.5f, 0.5f);
     trace(params.handle,
         origin,
@@ -122,7 +105,7 @@ extern "C" __global__ void __raygen__rg()
         1e16f,  // tmax
         &payload_rgb);
 
-    params.image[idx.y * params.image_width + idx.x] = make_color(payload_rgb);
+    params.image[launch_idx.y * launch_dims.x + launch_idx.x] = make_color(payload_rgb);
 }
 
 
