@@ -36,8 +36,7 @@
 #include <sstream>
 #include <string>
 
-
-//#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
+#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
 
 bool              resize_dirty = false;
 
@@ -312,7 +311,7 @@ int main(int argc, char* argv[])
         std::shared_ptr<Mesh> pMesh = std::make_shared<Mesh>();
         pMesh->addWave(pWave);
         pMesh->generateMesh(0.f);
-        pMesh->buidAccelerationStructure(pRTStateObject->getContext());
+        pMesh->buildAccelerationStructure(pRTStateObject->getContext());
 
         initCameraState();
         initLaunchParams(pMesh);
@@ -336,10 +335,17 @@ int main(int argc, char* argv[])
             std::chrono::duration<double> render_time(0.0);
             std::chrono::duration<double> display_time(0.0);
 
+            auto t00 = std::chrono::steady_clock::now();
+            float t;
             do
             {
                 auto t0 = std::chrono::steady_clock::now();
                 glfwPollEvents();
+
+
+                t = std::chrono::duration<float>(t0 - t00).count();
+                pMesh->updateMesh(t);
+                pMesh->updateAccelerationStructure(pRTStateObject->getContext());
 
                 updateState(output_buffer, params);
                 auto t1 = std::chrono::steady_clock::now();

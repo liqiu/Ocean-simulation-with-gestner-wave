@@ -16,7 +16,8 @@ public:
 	void generateMesh(float t);
 	void updateMesh(float t);
 	void addWave(std::shared_ptr<Wave> pWave) { mpWaves.push_back(pWave); }
-	void buidAccelerationStructure(OptixDeviceContext context);
+	void buildAccelerationStructure(OptixDeviceContext context);
+	void updateAccelerationStructure(OptixDeviceContext context);
 
 	OptixTraversableHandle getTraversableHandle() { return mGasHandle; }
 private:
@@ -33,4 +34,7 @@ private:
 
 	OptixTraversableHandle mGasHandle;
 	CUdeviceptr            mdGasOutputBuffer;
+
+	Vertex v[3];
+	uint32_t i[3];
 };
