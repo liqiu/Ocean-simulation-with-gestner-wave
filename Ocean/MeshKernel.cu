@@ -30,7 +30,7 @@ __global__ void generateGridMesh(Vertex* vertices, unsigned int* indices,
 	vertices[index].pos.z = (x - N / 2.0f) * length / N;
 
 	if (x < N && y < N) {
-		int indexIndices = 6 * index;
+		int indexIndices = 6 * (x * N + y);
 		indices[indexIndices] = index;
 		indices[indexIndices + 1] = index + Nplus1;
 		indices[indexIndices + 2] = index + Nplus1 + 1;
@@ -48,7 +48,7 @@ void cudaGenerateGridMesh(Vertex* vertices, unsigned int* indices,
 
 	float angularFreq = 2 * CUDART_PI_F * frequency;
 	float k = 2 * CUDART_PI_F / lamda;
-	generateGridMesh << <grid, block >> > (vertices, indices, amplitude, angularFreq, k, length, t);
+	generateGridMesh << <grid, block, 0, 0 >> > (vertices, indices, amplitude, angularFreq, k, length, t);
 }
 
 __global__ void updateGridMesh(Vertex* vertices, float amplitude,
@@ -76,5 +76,5 @@ void cudaUpdateGridMesh(Vertex* vertices, float amplitude, float lamda,
 
 	float angularFreq = 2 * CUDART_PI_F * frequency;
 	float k = 2 * CUDART_PI_F / lamda;
-	updateGridMesh << <grid, block >> > (vertices, amplitude, angularFreq, k, length, t);
+	updateGridMesh << <grid, block, 0, 0 >> > (vertices, amplitude, angularFreq, k, length, t);
 }
