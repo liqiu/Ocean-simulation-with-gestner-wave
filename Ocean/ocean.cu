@@ -6,6 +6,7 @@
 
 #include <cuda/random.h>
 
+
 extern "C" {
     __constant__ Params params;
 }
@@ -70,7 +71,6 @@ __forceinline__ __device__ uchar4 make_color(const float3& c)
         255u
     );
 }
-
 
 extern "C" __global__ void __raygen__rg()
 {

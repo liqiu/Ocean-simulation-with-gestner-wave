@@ -303,7 +303,7 @@ int main(int argc, char* argv[])
         pRTStateObject->initialize();
 
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
-        pWave->amplitude = 0.1f;
+        pWave->amplitude = 0.05f;
         pWave->frequency = 1.f;
         pWave->waveLength = 0.5f;
         pWave->phase = 0.f;
@@ -341,7 +341,6 @@ int main(int argc, char* argv[])
             {
                 auto t0 = std::chrono::steady_clock::now();
                 glfwPollEvents();
-
 
                 t = std::chrono::duration<float>(t0 - t00).count();
                 pMesh->updateMesh(t);

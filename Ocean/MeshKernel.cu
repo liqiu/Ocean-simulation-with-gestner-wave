@@ -13,13 +13,13 @@ int cuda_iDivUp(int a, int b)
 }
 
 __global__ void generateGridMesh(Vertex* vertices, unsigned int* indices,
-	float amplitude, float w, float k, float length, float t)
+	float amplitude, float w, float k, int Nplus1, float length, float t)
 {
 	unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
 	unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-	int N = blockDim.x * gridDim.x - 1;
-	int Nplus1 = N + 1;
+	int N = Nplus1 - 1;
+	if (x > N || y > N) return;
 	unsigned int index = x * Nplus1 + y;
 
 	float x0 = (y - N / 2.0f) * length / N;
@@ -48,17 +48,17 @@ void cudaGenerateGridMesh(Vertex* vertices, unsigned int* indices,
 
 	float angularFreq = 2 * CUDART_PI_F * frequency;
 	float k = 2 * CUDART_PI_F / lamda;
-	generateGridMesh << <grid, block, 0, 0 >> > (vertices, indices, amplitude, angularFreq, k, length, t);
+	generateGridMesh << <grid, block, 0, 0 >> > (vertices, indices, amplitude, angularFreq, k, Nplus1, length, t);
 }
 
 __global__ void updateGridMesh(Vertex* vertices, float amplitude,
-	float w, float k, float length, float t)
+	float w, float k, int Nplus1, float length, float t)
 {
 	unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
 	unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-	int N = blockDim.x * gridDim.x - 1;
-	int Nplus1 = N + 1;
+	int N = Nplus1 - 1;
+	if (x > N || y > N) return;
 	unsigned int index = x * Nplus1 + y;
 
 	float x0 = (y - N / 2.0f) * length / N;
@@ -76,5 +76,5 @@ void cudaUpdateGridMesh(Vertex* vertices, float amplitude, float lamda,
 
 	float angularFreq = 2 * CUDART_PI_F * frequency;
 	float k = 2 * CUDART_PI_F / lamda;
-	updateGridMesh << <grid, block, 0, 0 >> > (vertices, amplitude, angularFreq, k, length, t);
+	updateGridMesh << <grid, block, 0, 0 >> > (vertices, amplitude, angularFreq, k, Nplus1, length, t);
 }

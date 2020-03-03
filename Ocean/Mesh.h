@@ -12,6 +12,7 @@
 class Mesh
 {
 public:
+	~Mesh();
 
 	void generateMesh(float t);
 	void updateMesh(float t);
@@ -32,9 +33,7 @@ private:
 	size_t mVerticesSize;
 	size_t mIndicesSize;
 
-	OptixTraversableHandle mGasHandle;
-	CUdeviceptr            mdGasOutputBuffer;
-
-	Vertex v[3];
-	uint32_t i[3];
+	OptixTraversableHandle mGasHandle = 0;
+	CUdeviceptr mdGasOutputBuffer = 0;
+	CUdeviceptr mdTempBufferGas = 0;
 };
