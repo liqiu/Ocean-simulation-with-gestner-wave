@@ -41,6 +41,35 @@ __forceinline__ __device__ float3 calculateGerstnerWaveOffset(Wave* waves, int n
 	return sum;
 }
 
+
+__forceinline__ __device__ float3 calculateGerstnerWaveNormal(Wave* waves, int numWaves,
+	float2 posPlane, float t)
+{
+	float3 sum = make_float3(0.f, 0.f ,1.f);
+
+	float L, wi, phi, rad, Qi, Ai, WA, cosRad, sinRad;
+	float2 Di;
+	for (int i = 0; i < numWaves; i++)
+	{
+		Qi = waves[i].steepness;
+		Ai = waves[i].amplitude;
+		L = waves[i].waveLength;
+		wi = 2 / L;
+		WA = wi * Ai;
+		Di = make_float2(cos(waves[i].direction), sin(waves[i].direction));
+		phi = waves[i].speed * 2 / L;
+		rad = wi * dot(Di, posPlane) + phi * t;
+		cosRad = cos(rad);
+		sinRad = sin(rad);
+
+		sum.x += -Di.x * WA * cosRad;
+		sum.y += -Di.y * WA * cosRad;
+		sum.z += -Qi * WA * sin(rad);
+	}
+
+	return sum;
+}
+
 __global__ void generateGridMesh(Vertex* vertices, unsigned int* indices, Wave* waves,
 	int numWaves, int numSamplesX, int numSamplesY, float length, float t)
 {
@@ -56,8 +85,12 @@ __global__ void generateGridMesh(Vertex* vertices, unsigned int* indices, Wave* 
 	float y0 = (ty - Y / 2.0f) * length / Y;
 	float2 gridLocation = make_float2(x0, y0);
 
-	vertices[indexVertex].pos = make_float3(gridLocation, 0.f) + 
+	float3 newPos = make_float3(gridLocation, 0.f) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
+	vertices[indexVertex].pos = newPos;
+
+	vertices[indexVertex].normal = calculateGerstnerWaveNormal(waves, 
+		numWaves, make_float2(newPos.x, newPos.y), t);
 
 	if (tx < X && ty < Y) {
 		int indexIndices = 6 * (tx * X + ty);
@@ -95,8 +128,12 @@ __global__ void updateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
 	float y0 = (ty - Y / 2.0f) * length / Y;
 	float2 gridLocation = make_float2(x0, y0);
 
-	vertices[indexVertex].pos = make_float3(gridLocation, 0.f) +
+	float3 newPos = make_float3(gridLocation, 0.f) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
+	vertices[indexVertex].pos = newPos;
+
+	vertices[indexVertex].normal = calculateGerstnerWaveNormal(waves,
+		numWaves, make_float2(newPos.x, newPos.y), t);
 }
 
 void cudaUpdateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
