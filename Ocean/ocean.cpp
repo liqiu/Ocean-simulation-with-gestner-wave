@@ -304,9 +304,10 @@ int main(int argc, char* argv[])
 
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
         pWave->amplitude = 0.05f;
-        pWave->frequency = 1.f;
-        pWave->waveLength = 0.5f;
-        pWave->phase = 0.f;
+        pWave->direction = 0.f;
+        pWave->waveLength = 0.2f;
+        pWave->speed = 0.5f;
+        pWave->steepness = 0.f;
 
         std::shared_ptr<Mesh> pMesh = std::make_shared<Mesh>();
         pMesh->addWave(pWave);

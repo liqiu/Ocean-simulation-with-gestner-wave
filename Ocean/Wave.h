@@ -3,8 +3,9 @@
 
 struct Wave
 {
-	float frequency;
+	float direction;
 	float waveLength;
-	float phase;
 	float amplitude;
+	float steepness;
+	float speed;
 };
