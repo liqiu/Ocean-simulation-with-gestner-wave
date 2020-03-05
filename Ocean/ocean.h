@@ -3,6 +3,7 @@
 #include <optix.h>
 
 #include <vector_types.h>
+#include <texture_types.h>
 
 #include <stdint.h>
 
@@ -16,8 +17,9 @@ struct Params
     float3                   V;
     float3                   W;
 
-    uint32_t                 subframe_index;
+    uint32_t                 subframeIndex;
 
+    cudaTextureObject_t environmentTexture;
     OptixTraversableHandle handle;
 };
 

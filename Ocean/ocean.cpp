@@ -2,6 +2,7 @@
 #include "Wave.h"
 #include "Mesh.h"
 #include "RTStateObject.h"
+#include "hdr_loader.h"
 
 #include <glad/glad.h>
 
@@ -54,6 +55,17 @@ Params* d_params = nullptr;
 Params   params = {};
 int32_t                 width = 768;
 int32_t                 height = 768;
+
+cudaArray_t environmentTextureData = 0;
+
+
+#define check_success(expr) \
+    do { \
+        if(!(expr)) { \
+            fprintf(stderr, "Error in file %s, line %u: \"%s\".\n", __FILE__, __LINE__, #expr); \
+            exit(EXIT_FAILURE); \
+        } \
+    } while(false)
 
 //------------------------------------------------------------------------------
 //
@@ -151,7 +163,7 @@ void initLaunchParams(std::shared_ptr<Mesh> mesh) {
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(Params)));
 
-    params.subframe_index = 0u;
+    params.subframeIndex = 0u;
     params.handle = mesh->getTraversableHandle();
 }
 
@@ -261,7 +273,40 @@ void cleanup()
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
 }
 
+bool createEnvironmentTexture(std::string& fileName)
+{
+    unsigned int rx, ry;
+    float* pixels;
+    if (!load_hdr_float4(&pixels, &rx, &ry, fileName.c_str())) {
+        fprintf(stderr, "error loading environment map file %s\n", fileName.c_str());
+        return false;
+    }
 
+    const cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<float4>();
+    check_success(cudaMallocArray(&environmentTextureData, &channel_desc, rx, ry) == cudaSuccess);
+
+    check_success(cudaMemcpyToArray(
+        environmentTextureData, 0, 0, pixels,
+        rx * ry * sizeof(float4), cudaMemcpyHostToDevice) == cudaSuccess);
+
+    cudaResourceDesc res_desc;
+    memset(&res_desc, 0, sizeof(res_desc));
+    res_desc.resType = cudaResourceTypeArray;
+    res_desc.res.array.array = environmentTextureData;
+
+    cudaTextureDesc tex_desc;
+    memset(&tex_desc, 0, sizeof(tex_desc));
+    tex_desc.addressMode[0] = cudaAddressModeWrap;
+    tex_desc.addressMode[1] = cudaAddressModeClamp;
+    tex_desc.addressMode[2] = cudaAddressModeWrap;
+    tex_desc.filterMode = cudaFilterModeLinear;
+    tex_desc.readMode = cudaReadModeElementType;
+    tex_desc.normalizedCoords = 1;
+
+    check_success(cudaCreateTextureObject(&params.environmentTexture, &res_desc, &tex_desc, NULL) == cudaSuccess);
+
+    return true;
+}
 //------------------------------------------------------------------------------
 //
 // Main
@@ -272,6 +317,7 @@ int main(int argc, char* argv[])
 {
     sutil::CUDAOutputBufferType output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
 
+    std::string envFile;
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -289,6 +335,12 @@ int main(int argc, char* argv[])
                 printUsageAndExit(argv[0]);
             samples_per_launch = atoi(argv[++i]);
         }
+        else if (arg == "--env")
+        {
+            if (i >= argc - 1)
+                printUsageAndExit(argv[0]);
+            envFile = argv[++i];
+        }
         else
         {
             std::cerr << "Unknown option '" << argv[i] << "'\n";
@@ -299,6 +351,8 @@ int main(int argc, char* argv[])
 
     try
     {
+        createEnvironmentTexture(envFile);
+
         std::shared_ptr<RTStateObject> pRTStateObject = std::make_shared<RTStateObject>();
         pRTStateObject->initialize();
 
@@ -365,7 +419,7 @@ int main(int argc, char* argv[])
 
                 glfwSwapBuffers(window);
 
-                ++params.subframe_index;
+                ++params.subframeIndex;
 
             } while (!glfwWindowShouldClose(window));
             CUDA_SYNC_CHECK();

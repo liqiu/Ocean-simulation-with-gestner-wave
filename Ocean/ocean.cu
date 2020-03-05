@@ -72,6 +72,18 @@ __forceinline__ __device__ uchar4 make_color(const float3& c)
     );
 }
 
+#define M_PI       3.14159265358979323846
+
+__forceinline__ __device__ float3 evaluateEnv(cudaTextureObject_t tex, float3 rayDirection)
+{
+    const float4 texval = tex2D<float4>(
+        tex,
+        atan2f(rayDirection.z, rayDirection.x) * (float)(0.5 / M_PI) + 0.5f,
+        acosf(fmaxf(fminf(rayDirection.y, 1.0f), -1.0f)) * (float)(1.0 / M_PI));
+
+    return make_float3(texval);
+}
+
 extern "C" __global__ void __raygen__rg()
 {
     const uint3  launch_idx = optixGetLaunchIndex();
@@ -80,13 +92,13 @@ extern "C" __global__ void __raygen__rg()
     const float3 U = params.U;
     const float3 V = params.V;
     const float3 W = params.W;
-    const int    subframe_index = params.subframe_index;
+    const int    subframeIndex = params.subframeIndex;
     //
     // Generate camera ray
     //
-    uint32_t seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframe_index);
+    uint32_t seed = tea<4>(launch_idx.y * launch_dims.x + launch_idx.x, subframeIndex);
 
-    const float2 subpixel_jitter = subframe_index == 0 ?
+    const float2 subpixel_jitter = subframeIndex == 0 ?
         make_float2(0.0f, 0.0f) :
         make_float2(rnd(seed) - 0.5f, rnd(seed) - 0.5f);
 
@@ -112,8 +124,7 @@ extern "C" __global__ void __raygen__rg()
 extern "C" __global__ void __miss__ms()
 {
     MissData* rt_data = reinterpret_cast<MissData*>(optixGetSbtDataPointer());
-    float3    payload = getPayload();
-    setPayload(make_float3(rt_data->r, rt_data->g, rt_data->b));
+    setPayload(evaluateEnv(params.environmentTexture, optixGetWorldRayDirection()));
 }
 
 

@@ -4,7 +4,6 @@
 
 #include <math_constants.h>
 #include <cuda_runtime_api.h>
-#include <corecrt_math.h>
 #include <vector_types.h>
 #include <vector_functions.hpp>
 
@@ -64,7 +63,7 @@ __forceinline__ __device__ float3 calculateGerstnerWaveNormal(Wave* waves, int n
 
 		sum.x += -Di.x * WA * cosRad;
 		sum.y += -Di.y * WA * cosRad;
-		sum.z += -Qi * WA * sin(rad);
+		sum.z += -Qi * WA * sinRad;
 	}
 
 	return sum;
