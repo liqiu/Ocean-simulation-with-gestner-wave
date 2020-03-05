@@ -11,7 +11,7 @@ struct Vertex {
 };
 
 void cudaGenerateGridMesh(Vertex* vertices, unsigned int* indices, Wave* waves, int numWaves,
-    int numSamplesX, int numSamplesY, float length, float t);
+    int numSamplesX, int numSamplesZ, float length, float t);
 
 void cudaUpdateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
-    int numSamplesX, int numSamplesY, float length, float t);
+    int numSamplesX, int numSamplesZ, float length, float t);

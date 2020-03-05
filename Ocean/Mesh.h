@@ -26,7 +26,7 @@ private:
 	CUdeviceptr mdWaves;
 
 	uint16_t mSamplesX = 96;
-	uint16_t mSamplesY = 96;
+	uint16_t mSamplesZ = 96;
 	float mLength = 1.f;
 
 	CUdeviceptr mdVertices;

@@ -18,8 +18,8 @@ Mesh::~Mesh()
 
 void Mesh::generateMesh(float t)
 {
-    size_t verticesByteSize = mSamplesX * mSamplesY * sizeof(Vertex);
-    size_t indicesByteSize = 4 * (mSamplesX - 1) * (mSamplesY - 1) * 6;
+    size_t verticesByteSize = mSamplesX * mSamplesZ * sizeof(Vertex);
+    size_t indicesByteSize = 4 * (mSamplesX - 1) * (mSamplesZ - 1) * 6;
     size_t waveByteSize = mWaves.size() * sizeof(Wave);
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdVertices), verticesByteSize));
@@ -29,13 +29,13 @@ void Mesh::generateMesh(float t)
     CUDA_CHECK(cudaMemcpy((void*)mdWaves, mWaves.data(), waveByteSize, cudaMemcpyHostToDevice));
 
     cudaGenerateGridMesh(reinterpret_cast<Vertex*>(mdVertices), reinterpret_cast<unsigned int*>(mdIndices),
-        reinterpret_cast<Wave*>(mdWaves), mWaves.size(), mSamplesX, mSamplesY, mLength, t);
+        reinterpret_cast<Wave*>(mdWaves), mWaves.size(), mSamplesX, mSamplesZ, mLength, t);
 }
 
 void Mesh::updateMesh(float t)
 {
     cudaUpdateGridMesh(reinterpret_cast<Vertex*>(mdVertices), reinterpret_cast<Wave*>(mdWaves),
-        mWaves.size(), mSamplesX, mSamplesY, mLength, t);
+        mWaves.size(), mSamplesX, mSamplesZ, mLength, t);
 }
 
 void Mesh::buildAccelerationStructure(OptixDeviceContext context)
@@ -48,12 +48,12 @@ void Mesh::buildAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesY;
+    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
     triangle_input.triangleArray.vertexBuffers = &mdVertices;
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = 12;
-    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesY - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
     triangle_input.triangleArray.indexBuffer = mdIndices;
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
@@ -94,12 +94,12 @@ void Mesh::updateAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesY;
+    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
     triangle_input.triangleArray.vertexBuffers = &mdVertices;
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = 12;
-    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesY - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
     triangle_input.triangleArray.indexBuffer = mdIndices;
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
