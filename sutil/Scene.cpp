@@ -1288,10 +1288,13 @@ void Scene::createSBT()
                 rec.data.geometry_data.triangle_mesh.indices   = mesh->indices[i];
 
                 const int32_t mat_idx  = mesh->material_idx[i];
-                if( mat_idx >= 0 )
-                    rec.data.material_data.pbr = m_materials[ mat_idx ];
-                else
+                if (mat_idx >= 0) {
+                    rec.data.material_data.pbr = m_materials[mat_idx];
+                }
+                else {
                     rec.data.material_data.pbr = MaterialData::Pbr();
+                    rec.data.material_data.pbr.indexOfRefraction = 1.333f; // TODO:
+                }
                 hitgroup_records.push_back( rec );
 
                 OPTIX_CHECK( optixSbtRecordPackHeader( m_occlusion_hit_group, &rec ) );

@@ -266,83 +266,91 @@ extern "C" __global__ void __closesthit__occlusion()
 extern "C" __global__ void __closesthit__radiance()
 {
     const whitted::HitGroupData* hit_group_data = reinterpret_cast<whitted::HitGroupData*>( optixGetSbtDataPointer() );
-    const LocalGeometry          geom           = getLocalGeometry( hit_group_data->geometry_data );
-
-    //
-    // Retrieve material data
-    //
-    float3 base_color = make_float3( hit_group_data->material_data.pbr.base_color );
-    if( hit_group_data->material_data.pbr.base_color_tex )
-        base_color *= linearize( make_float3(
-                    tex2D<float4>( hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y )
-                    ) );
-
-    float metallic  = hit_group_data->material_data.pbr.metallic;
-    float roughness = hit_group_data->material_data.pbr.roughness;
-    float4 mr_tex = make_float4( 1.0f );
-    if( hit_group_data->material_data.pbr.metallic_roughness_tex )
-        // MR tex is (occlusion, roughness, metallic )
-        mr_tex = tex2D<float4>( hit_group_data->material_data.pbr.metallic_roughness_tex, geom.UV.x, geom.UV.y );
-    roughness *= mr_tex.y;
-    metallic  *= mr_tex.z;
-
-
-    //
-    // Convert to material params
-    //
-    const float  F0         = 0.04f;
-    const float3 diff_color = base_color*( 1.0f - F0 )*( 1.0f - metallic );
-    const float3 spec_color = lerp( make_float3( F0 ), base_color, metallic );
-    const float  alpha      = roughness*roughness;
-
-    //
-    // compute direct lighting
-    //
-
-    float3 N = geom.N;
-    if( hit_group_data->material_data.pbr.normal_tex )
+    const LocalGeometry          geom = getLocalGeometry(hit_group_data->geometry_data);
+    if (hit_group_data->material_data.pbr.indexOfRefraction > 1.f) 
     {
-        const float4 NN = 2.0f*tex2D<float4>( hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y ) - make_float4(1.0f);
-        N = normalize( NN.x*normalize( geom.dpdu ) + NN.y*normalize( geom.dpdv ) + NN.z*geom.N );
+        float3 R = reflect(optixGetWorldRayDirection(), geom.N);
+        setPayloadResult(evaluateEnv(params.environmentTexture, R));
     }
-
-    float3 result = make_float3( 0.0f );
-
-    for( int i = 0; i < params.lights.count; ++i )
+    else 
     {
-        Light::Point light = params.lights[i];
 
-        // TODO: optimize
-        const float  L_dist  = length( light.position - geom.P );
-        const float3 L       = ( light.position - geom.P ) / L_dist;
-        const float3 V       = -normalize( optixGetWorldRayDirection() );
-        const float3 H       = normalize( L + V );
-        const float  N_dot_L = dot( N, L );
-        const float  N_dot_V = dot( N, V );
-        const float  N_dot_H = dot( N, H );
-        const float  V_dot_H = dot( V, H );
+        //
+        // Retrieve material data
+        //
+        float3 base_color = make_float3(hit_group_data->material_data.pbr.base_color);
+        if (hit_group_data->material_data.pbr.base_color_tex)
+            base_color *= linearize(make_float3(
+                tex2D<float4>(hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y)
+            ));
 
-        if( N_dot_L > 0.0f && N_dot_V > 0.0f )
+        float metallic = hit_group_data->material_data.pbr.metallic;
+        float roughness = hit_group_data->material_data.pbr.roughness;
+        float4 mr_tex = make_float4(1.0f);
+        if (hit_group_data->material_data.pbr.metallic_roughness_tex)
+            // MR tex is (occlusion, roughness, metallic )
+            mr_tex = tex2D<float4>(hit_group_data->material_data.pbr.metallic_roughness_tex, geom.UV.x, geom.UV.y);
+        roughness *= mr_tex.y;
+        metallic *= mr_tex.z;
+
+
+        //
+        // Convert to material params
+        //
+        const float  F0 = 0.04f;
+        const float3 diff_color = base_color * (1.0f - F0) * (1.0f - metallic);
+        const float3 spec_color = lerp(make_float3(F0), base_color, metallic);
+        const float  alpha = roughness * roughness;
+
+        //
+        // compute direct lighting
+        //
+
+        float3 N = geom.N;
+        if (hit_group_data->material_data.pbr.normal_tex)
         {
-            const float tmin     = 0.001f;          // TODO
-            const float tmax     = L_dist - 0.001f; // TODO
-            const bool  occluded = traceOcclusion( params.handle, geom.P, L, tmin, tmax );
-            if( !occluded )
+            const float4 NN = 2.0f * tex2D<float4>(hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y) - make_float4(1.0f);
+            N = normalize(NN.x * normalize(geom.dpdu) + NN.y * normalize(geom.dpdv) + NN.z * geom.N);
+        }
+
+        float3 result = make_float3(0.0f);
+
+        for (int i = 0; i < params.lights.count; ++i)
+        {
+            Light::Point light = params.lights[i];
+
+            // TODO: optimize
+            const float  L_dist = length(light.position - geom.P);
+            const float3 L = (light.position - geom.P) / L_dist;
+            const float3 V = -normalize(optixGetWorldRayDirection());
+            const float3 H = normalize(L + V);
+            const float  N_dot_L = dot(N, L);
+            const float  N_dot_V = dot(N, V);
+            const float  N_dot_H = dot(N, H);
+            const float  V_dot_H = dot(V, H);
+
+            if (N_dot_L > 0.0f && N_dot_V > 0.0f)
             {
-                const float3 F     = schlick( spec_color, V_dot_H );
-                const float  G_vis = vis( N_dot_L, N_dot_V, alpha );
-                const float  D     = ggxNormal( N_dot_H, alpha );
+                const float tmin = 0.001f;          // TODO
+                const float tmax = L_dist - 0.001f; // TODO
+                const bool  occluded = traceOcclusion(params.handle, geom.P, L, tmin, tmax);
+                if (!occluded)
+                {
+                    const float3 F = schlick(spec_color, V_dot_H);
+                    const float  G_vis = vis(N_dot_L, N_dot_V, alpha);
+                    const float  D = ggxNormal(N_dot_H, alpha);
 
-                const float3 diff = ( 1.0f - F )*diff_color / M_PIf;
-                const float3 spec = F*G_vis*D;
+                    const float3 diff = (1.0f - F) * diff_color / M_PIf;
+                    const float3 spec = F * G_vis * D;
 
-                result += light.color*light.intensity*N_dot_L*( diff + spec );
+                    result += light.color * light.intensity * N_dot_L * (diff + spec);
+                }
             }
         }
+        // TODO: add debug viewing mode that allows runtime switchable views of shading params, normals, etc
+        //result = make_float3( roughness );
+        //result = N*0.5f + make_float3( 0.5f );
+        //result = geom.N*0.5f + make_float3( 0.5f );
+        setPayloadResult(result);
     }
-    // TODO: add debug viewing mode that allows runtime switchable views of shading params, normals, etc
-    //result = make_float3( roughness );
-    //result = N*0.5f + make_float3( 0.5f );
-    //result = geom.N*0.5f + make_float3( 0.5f );
-    setPayloadResult( result );
 }

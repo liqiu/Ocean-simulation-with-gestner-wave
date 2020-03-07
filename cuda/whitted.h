@@ -52,6 +52,8 @@ enum RayType
 {
     RAY_TYPE_RADIANCE  = 0,
     RAY_TYPE_OCCLUSION = 1,
+    //RAY_TYPE_REFLECTION = 2,
+    //RAY_TYPE_REFRACTION = 3,
     RAY_TYPE_COUNT = 2
 };
 

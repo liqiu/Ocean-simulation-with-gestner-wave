@@ -44,6 +44,7 @@ struct MaterialData
         float4               base_color = { 1.0f, 1.0f, 1.0f, 1.0f };
         float                metallic   = 1.0f;
         float                roughness  = 1.0f;
+        float                indexOfRefraction = 0.f;
 
         cudaTextureObject_t  base_color_tex         = 0;
         cudaTextureObject_t  metallic_roughness_tex = 0;
