@@ -1,16 +1,40 @@
-#include "Ocean.h"
+//
+// Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+//  * Redistributions of source code must retain the above copyright
+//    notice, this list of conditions and the following disclaimer.
+//  * Redistributions in binary form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+//  * Neither the name of NVIDIA CORPORATION nor the names of its
+//    contributors may be used to endorse or promote products derived
+//    from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+// PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+// OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 #include "Wave.h"
-#include "Mesh.h"
-#include "RTStateObject.h"
+#include "WaveMesh.h"
 #include "hdr_loader.h"
 
-#include <glad/glad.h>
+#include <glad/glad.h> // Needs to be included before gl_interop
 
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
 #include <optix.h>
-#include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 
 #include <sampleConfig.h>
@@ -24,6 +48,7 @@
 #include <sutil/Exception.h>
 #include <sutil/GLDisplay.h>
 #include <sutil/Matrix.h>
+#include <sutil/Scene.h>
 #include <sutil/sutil.h>
 #include <sutil/vec_math.h>
 
@@ -37,7 +62,8 @@
 #include <sstream>
 #include <string>
 
-#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
+
+//#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
 
 bool              resize_dirty = false;
 
@@ -51,8 +77,8 @@ int32_t           mouse_button = -1;
 
 int32_t           samples_per_launch = 16;
 
-Params* d_params = nullptr;
-Params   params = {};
+whitted::LaunchParams* d_params = nullptr;
+whitted::LaunchParams   params = {};
 int32_t                 width = 768;
 int32_t                 height = 768;
 
@@ -159,16 +185,50 @@ void printUsageAndExit(const char* argv0)
 }
 
 
-void initLaunchParams(std::shared_ptr<Mesh> mesh) {
+void initLaunchParams(const sutil::Scene& scene) {
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&params.accum_buffer),
+        width* height * sizeof(float4)
+    ));
+    params.frame_buffer = nullptr; // Will be set when output buffer is mapped
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(Params)));
+    params.subframe_index = 0u;
 
-    params.subframeIndex = 0u;
-    params.handle = mesh->getTraversableHandle();
+    const float loffset = scene.aabb().maxExtent();
+
+    // TODO: add light support to sutil::Scene
+    std::vector<Light::Point> lights(2);
+    lights[0].color = { 1.0f, 1.0f, 0.8f };
+    lights[0].intensity = 5.0f;
+    lights[0].position = scene.aabb().center() + make_float3(loffset);
+    lights[0].falloff = Light::Falloff::QUADRATIC;
+    lights[1].color = { 0.8f, 0.8f, 1.0f };
+    lights[1].intensity = 3.0f;
+    lights[1].position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
+    lights[1].falloff = Light::Falloff::QUADRATIC;
+
+    params.lights.count = static_cast<uint32_t>(lights.size());
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&params.lights.data),
+        lights.size() * sizeof(Light::Point)
+    ));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(params.lights.data),
+        lights.data(),
+        lights.size() * sizeof(Light::Point),
+        cudaMemcpyHostToDevice
+    ));
+
+    params.miss_color = make_float3(0.1f);
+
+    //CUDA_CHECK( cudaStreamCreate( &stream ) );
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(whitted::LaunchParams)));
+
+    params.handle = scene.traversableHandle();
 }
 
 
-void handleCameraUpdate(Params& params)
+void handleCameraUpdate(whitted::LaunchParams& params)
 {
     if (!camera_changed)
         return;
@@ -195,36 +255,46 @@ void handleResize(sutil::CUDAOutputBuffer<uchar4>& output_buffer)
     resize_dirty = false;
 
     output_buffer.resize(width, height);
+
+    // Realloc accumulation buffer
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(params.accum_buffer)));
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&params.accum_buffer),
+        width* height * sizeof(float4)
+    ));
 }
 
 
-void updateState(sutil::CUDAOutputBuffer<uchar4>& output_buffer, Params& params)
+void updateState(sutil::CUDAOutputBuffer<uchar4>& output_buffer, whitted::LaunchParams& params)
 {
+    // Update params on device
+    if (camera_changed || resize_dirty)
+        params.subframe_index = 0;
 
     handleCameraUpdate(params);
     handleResize(output_buffer);
 }
 
 
-void launchSubframe(sutil::CUDAOutputBuffer<uchar4>& output_buffer, std::shared_ptr<RTStateObject> rtStateObject)
+void launchSubframe(sutil::CUDAOutputBuffer<uchar4>& output_buffer, const sutil::Scene& scene)
 {
 
     // Launch
     uchar4* result_buffer_data = output_buffer.map();
-    params.image = result_buffer_data;
+    params.frame_buffer = result_buffer_data;
     CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_params),
         &params,
-        sizeof(Params),
+        sizeof(whitted::LaunchParams),
         cudaMemcpyHostToDevice,
         0 // stream
     ));
 
     OPTIX_CHECK(optixLaunch(
-        rtStateObject->getPipeline(),
+        scene.pipeline(),
         0,             // stream
         reinterpret_cast<CUdeviceptr>(d_params),
-        sizeof(Params),
-        rtStateObject->getSbt(),
+        sizeof(whitted::LaunchParams),
+        scene.sbt(),
         width,  // launch width
         height, // launch height
         1       // launch depth
@@ -253,13 +323,10 @@ void displaySubframe(
 }
 
 
-void initCameraState()
+void initCameraState(const sutil::Scene& scene)
 {
-    camera.setEye({ 0.0f, 0.0f, 3.0f });
-    camera.setLookat({ 0.0f, 0.0f, 0.0f });
-    camera.setUp({ 0.0f, 1.0f, 0.0f });
-    camera.setFovY(45.0f);
-    camera.setAspectRatio((float)width / (float)height);
+    camera = scene.camera();
+    camera_changed = true;
 
     trackball.setCamera(&camera);
     trackball.setMoveSpeed(10.0f);
@@ -270,6 +337,8 @@ void initCameraState()
 
 void cleanup()
 {
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(params.accum_buffer)));
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(params.lights.data)));
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_params)));
 }
 
@@ -307,6 +376,7 @@ bool createEnvironmentTexture(std::string& fileName)
 
     return true;
 }
+
 //------------------------------------------------------------------------------
 //
 // Main
@@ -317,7 +387,13 @@ int main(int argc, char* argv[])
 {
     sutil::CUDAOutputBufferType output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
 
+    //
+    // Parse command line options
+    //
+    std::string outfile;
     std::string envFile;
+    std::string infile = sutil::sampleDataFilePath("WaterBottle/WaterBottle.gltf");
+
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -328,6 +404,18 @@ int main(int argc, char* argv[])
         else if (arg == "--no-gl-interop")
         {
             output_buffer_type = sutil::CUDAOutputBufferType::CUDA_DEVICE;
+        }
+        else if (arg == "--model")
+        {
+            if (i >= argc - 1)
+                printUsageAndExit(argv[0]);
+            infile = argv[++i];
+        }
+        else if (arg == "--file" || arg == "-f")
+        {
+            if (i >= argc - 1)
+                printUsageAndExit(argv[0]);
+            outfile = argv[++i];
         }
         else if (arg == "--launch-samples" || arg == "-s")
         {
@@ -348,13 +436,21 @@ int main(int argc, char* argv[])
         }
     }
 
+    if (infile.empty())
+    {
+        std::cerr << "--model argument required" << std::endl;
+        printUsageAndExit(argv[0]);
+    }
+
 
     try
     {
-        createEnvironmentTexture(envFile);
+        sutil::Scene scene;
+        sutil::loadScene(infile.c_str(), scene);
+        scene.createContext();
+        scene.buildMeshAccels();
 
-        std::shared_ptr<RTStateObject> pRTStateObject = std::make_shared<RTStateObject>();
-        pRTStateObject->initialize();
+        createEnvironmentTexture(envFile);
 
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
         pWave->amplitude = 0.05f;
@@ -363,70 +459,107 @@ int main(int argc, char* argv[])
         pWave->speed = 0.5f;
         pWave->steepness = 0.f;
 
-        std::shared_ptr<Mesh> pMesh = std::make_shared<Mesh>();
+        OPTIX_CHECK(optixInit());
+        std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>();
         pMesh->addWave(pWave);
         pMesh->generateMesh(0.f);
-        pMesh->buildAccelerationStructure(pRTStateObject->getContext());
+        pMesh->buildAccelerationStructure(scene.context());
 
-        initCameraState();
-        initLaunchParams(pMesh);
+        scene.addMesh(pMesh->getMesh());
+        scene.buildInstanceAccel();
+        scene.createPTXModule();
+        scene.createProgramGroups();
+        scene.createPipeline();
+        scene.createSBT();
+        scene.calculateAABB();
 
-        GLFWwindow* window = sutil::initUI("optixMeshViewer", width, height);
-        glfwSetMouseButtonCallback(window, mouseButtonCallback);
-        glfwSetCursorPosCallback(window, cursorPosCallback);
-        glfwSetWindowSizeCallback(window, windowSizeCallback);
-        glfwSetKeyCallback(window, keyCallback);
-        glfwSetScrollCallback(window, scrollCallback);
-        glfwSetWindowUserPointer(window, &params);
+        initCameraState(scene);
+        initLaunchParams(scene);
 
-        //
-        // Render loop
-        //
+
+        if (outfile.empty())
         {
-            sutil::CUDAOutputBuffer<uchar4> output_buffer(output_buffer_type, width, height);
-            sutil::GLDisplay gl_display;
+            GLFWwindow* window = sutil::initUI("Ocean", width, height);
+            glfwSetMouseButtonCallback(window, mouseButtonCallback);
+            glfwSetCursorPosCallback(window, cursorPosCallback);
+            glfwSetWindowSizeCallback(window, windowSizeCallback);
+            glfwSetKeyCallback(window, keyCallback);
+            glfwSetScrollCallback(window, scrollCallback);
+            glfwSetWindowUserPointer(window, &params);
 
-            std::chrono::duration<double> state_update_time(0.0);
-            std::chrono::duration<double> render_time(0.0);
-            std::chrono::duration<double> display_time(0.0);
-
+            //
+            // Render loop
+            //
             auto t00 = std::chrono::steady_clock::now();
             float t;
-            do
             {
-                auto t0 = std::chrono::steady_clock::now();
-                glfwPollEvents();
+                sutil::CUDAOutputBuffer<uchar4> output_buffer(output_buffer_type, width, height);
+                sutil::GLDisplay gl_display;
 
-                t = std::chrono::duration<float>(t0 - t00).count();
-                pMesh->updateMesh(t);
-                pMesh->updateAccelerationStructure(pRTStateObject->getContext());
+                std::chrono::duration<double> state_update_time(0.0);
+                std::chrono::duration<double> render_time(0.0);
+                std::chrono::duration<double> display_time(0.0);
 
-                updateState(output_buffer, params);
-                auto t1 = std::chrono::steady_clock::now();
-                state_update_time += t1 - t0;
-                t0 = t1;
+                do
+                {
+                    auto t0 = std::chrono::steady_clock::now();
+                    glfwPollEvents();
 
-                launchSubframe(output_buffer, pRTStateObject);
-                t1 = std::chrono::steady_clock::now();
-                render_time += t1 - t0;
-                t0 = t1;
+                    t = std::chrono::duration<float>(t0 - t00).count();
+                    pMesh->updateMesh(t);
+                    pMesh->updateAccelerationStructure(scene.context());
 
-                displaySubframe(output_buffer, gl_display, window);
-                t1 = std::chrono::steady_clock::now();
-                display_time += t1 - t0;
+                    updateState(output_buffer, params);
+                    auto t1 = std::chrono::steady_clock::now();
+                    state_update_time += t1 - t0;
+                    t0 = t1;
 
-                sutil::displayStats(state_update_time, render_time, display_time);
+                    launchSubframe(output_buffer, scene);
+                    t1 = std::chrono::steady_clock::now();
+                    render_time += t1 - t0;
+                    t0 = t1;
 
-                glfwSwapBuffers(window);
+                    displaySubframe(output_buffer, gl_display, window);
+                    t1 = std::chrono::steady_clock::now();
+                    display_time += t1 - t0;
 
-                ++params.subframeIndex;
+                    sutil::displayStats(state_update_time, render_time, display_time);
 
-            } while (!glfwWindowShouldClose(window));
-            CUDA_SYNC_CHECK();
+                    glfwSwapBuffers(window);
+
+                    ++params.subframe_index;
+                } while (!glfwWindowShouldClose(window));
+                CUDA_SYNC_CHECK();
+            }
+
+            sutil::cleanupUI(window);
         }
+        else
+        {
+            if (output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP)
+            {
+                sutil::initGLFW(); // For GL context
+                sutil::initGL();
+            }
 
-        sutil::cleanupUI(window);
-        
+            sutil::CUDAOutputBuffer<uchar4> output_buffer(output_buffer_type, width, height);
+            handleCameraUpdate(params);
+            handleResize(output_buffer);
+            launchSubframe(output_buffer, scene);
+
+            sutil::ImageBuffer buffer;
+            buffer.data = output_buffer.getHostPointer();
+            buffer.width = output_buffer.width();
+            buffer.height = output_buffer.height();
+            buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
+
+            sutil::displayBufferFile(outfile.c_str(), buffer, false);
+
+            if (output_buffer_type == sutil::CUDAOutputBufferType::GL_INTEROP)
+            {
+                glfwTerminate();
+            }
+        }
 
         cleanup();
 

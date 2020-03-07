@@ -33,6 +33,7 @@
 #include <sutil/Aabb.h>
 #include <sutil/Camera.h>
 #include <sutil/Matrix.h>
+#include <sutil/MeshGroup.h>
 #include <sutil/Preprocessor.h>
 #include <sutil/sutilapi.h>
 
@@ -52,25 +53,6 @@ namespace sutil
 class Scene
 {
 public:
-    struct MeshGroup
-    {
-        std::string                       name;
-        Matrix4x4                         transform;
-
-        std::vector<GenericBufferView>    indices;
-        std::vector<BufferView<float3> >  positions;
-        std::vector<BufferView<float3> >  normals;
-        std::vector<BufferView<float2> >  texcoords;
-
-        std::vector<int32_t>              material_idx;
-
-        OptixTraversableHandle            gas_handle = 0;
-        CUdeviceptr                       d_gas_output = 0;
-
-        Aabb                              object_aabb;
-        Aabb                              world_aabb;
-    };
-
 
     SUTILAPI void addCamera  ( const Camera& camera            )    { m_cameras.push_back( camera );   }
     SUTILAPI void addMesh    ( std::shared_ptr<MeshGroup> mesh )    { m_meshes.push_back( mesh );      }
@@ -94,6 +76,7 @@ public:
     SUTILAPI cudaArray_t                    getImage  ( int32_t image_index   )const;
     SUTILAPI cudaTextureObject_t            getSampler( int32_t sampler_index )const;
 
+    SUTILAPI void                           calculateAABB();
     SUTILAPI void                           finalize();
     SUTILAPI void                           cleanup();
 
@@ -109,12 +92,12 @@ public:
     SUTILAPI void createContext();
     SUTILAPI void buildMeshAccels();
     SUTILAPI void buildInstanceAccel( int rayTypeCount = whitted::RAY_TYPE_COUNT );
-
+    SUTILAPI void createPTXModule();
+    SUTILAPI void createProgramGroups();
+    SUTILAPI void createPipeline();
+    SUTILAPI void createSBT();
 private:
-    void createPTXModule();
-    void createProgramGroups();
-    void createPipeline();
-    void createSBT();
+
 
     // TODO: custom geometry support
 

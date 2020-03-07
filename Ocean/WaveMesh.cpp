@@ -1,44 +1,96 @@
-#include "mesh.h"
+#include "WaveMesh.h"
 
 #include <sutil/Matrix.h>
+#include <sutil/MeshGroup.h>
 #include <sutil/Exception.h>
 #include <sutil/vec_math.h>
 
+#include <optix.h>
+#include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 
-Mesh::~Mesh()
+
+WaveMesh::WaveMesh()
+{
+    mTransform = sutil::Matrix4x4::identity();
+}
+
+WaveMesh::~WaveMesh()
 {
     CUDA_CHECK(cudaFree((void*)mdGasOutputBuffer));
     CUDA_CHECK(cudaFree((void*)mdTempBufferGas));
     CUDA_CHECK(cudaFree((void*)mdWaves));
 }
 
-void Mesh::generateMesh(float t)
+void WaveMesh::generateMesh(float t)
 {
-    size_t verticesByteSize = mSamplesX * mSamplesZ * sizeof(Vertex);
+    size_t verticesByteSize = mSamplesX * mSamplesZ * sizeof(float3);
     size_t indicesByteSize = 4 * (mSamplesX - 1) * (mSamplesZ - 1) * 6;
     size_t waveByteSize = mWaves.size() * sizeof(Wave);
 
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdVertices), verticesByteSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdIndices), indicesByteSize));
+    float3* dVertices, *dNormals;
+    uint32_t* dIndices;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dVertices), verticesByteSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dNormals), verticesByteSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dIndices), indicesByteSize));
+    mMeshBuffer.pos = dVertices;
+    mMeshBuffer.normal = dNormals;
+    mMeshBuffer.indices = dIndices;
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdWaves), waveByteSize));
     CUDA_CHECK(cudaMemcpy((void*)mdWaves, mWaves.data(), waveByteSize, cudaMemcpyHostToDevice));
 
-    cudaGenerateGridMesh(reinterpret_cast<Vertex*>(mdVertices), reinterpret_cast<unsigned int*>(mdIndices),
-        reinterpret_cast<Wave*>(mdWaves), mWaves.size(), mSamplesX, mSamplesZ, mLength, t);
+    cudaGenerateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves), mWaves.size(),
+        mSamplesX, mSamplesZ, mLength, t);
+
+    mpMesh = std::make_shared<sutil::MeshGroup>();
+    mpMesh->name = "Wave";
+    mpMesh->material_idx.push_back(-1);
+    mpMesh->texcoords.push_back(BufferView<float2>());
+    mpMesh->transform = mTransform;
+
+    float maxAmplitude = 0.f;
+    for (auto wave : mWaves) {
+        maxAmplitude = std::max((float)maxAmplitude, wave.amplitude);
+    }
+    mpMesh->object_aabb.m_min = make_float3(-mLength / 2, -maxAmplitude, -mLength / 2);
+    mpMesh->object_aabb.m_max = make_float3(mLength / 2, maxAmplitude, mLength / 2);
+    mpMesh->world_aabb = mpMesh->object_aabb;
+    mpMesh->world_aabb.transform(mTransform);
+   
+    BufferView<float3> bvPos;
+    bvPos.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.pos);
+    bvPos.byte_stride = sizeof(float3);
+    bvPos.count = mSamplesX * mSamplesZ;
+    bvPos.elmt_byte_size = sizeof(float3);
+    mpMesh->positions.push_back(bvPos);
+
+    BufferView<float3> bvNormal;
+    bvNormal.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.normal);
+    bvNormal.byte_stride = sizeof(float3);
+    bvNormal.count = mSamplesX * mSamplesZ;
+    bvNormal.elmt_byte_size = sizeof(float3);
+    mpMesh->normals.push_back(bvNormal);
+
+    BufferView<uint32_t> bvIndices;
+    bvIndices.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
+    bvIndices.byte_stride = sizeof(uint32_t);
+    bvIndices.count = (mSamplesX - 1) * (mSamplesZ - 1) * 6;
+    bvIndices.elmt_byte_size = sizeof(uint32_t);
+    mpMesh->indices.push_back(bvIndices);
 }
 
-void Mesh::updateMesh(float t)
+void WaveMesh::updateMesh(float t)
 {
-    cudaUpdateGridMesh(reinterpret_cast<Vertex*>(mdVertices), reinterpret_cast<Wave*>(mdWaves),
+    cudaUpdateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves),
         mWaves.size(), mSamplesX, mSamplesZ, mLength, t);
 }
 
-void Mesh::buildAccelerationStructure(OptixDeviceContext context)
+void WaveMesh::buildAccelerationStructure(OptixDeviceContext context)
 {
     OptixAccelBuildOptions accel_options = {};
     accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_BUILD | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
@@ -49,12 +101,12 @@ void Mesh::buildAccelerationStructure(OptixDeviceContext context)
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
     triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
-    triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
-    triangle_input.triangleArray.vertexBuffers = &mdVertices;
+    triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
+    triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-    triangle_input.triangleArray.indexStrideInBytes = 12;
+    triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
     triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
-    triangle_input.triangleArray.indexBuffer = mdIndices;
+    triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
 
@@ -82,9 +134,12 @@ void Mesh::buildAccelerationStructure(OptixDeviceContext context)
         nullptr,  // emitted property list
         0               // num emitted properties
     ));
+
+    mpMesh->d_gas_output = mdGasOutputBuffer;
+    mpMesh->gas_handle = mGasHandle;
 }
 
-void Mesh::updateAccelerationStructure(OptixDeviceContext context)
+void WaveMesh::updateAccelerationStructure(OptixDeviceContext context)
 {
     OptixAccelBuildOptions accel_options = {};
     accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_BUILD | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
@@ -95,12 +150,12 @@ void Mesh::updateAccelerationStructure(OptixDeviceContext context)
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
     triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
-    triangle_input.triangleArray.vertexStrideInBytes = sizeof(Vertex);
-    triangle_input.triangleArray.vertexBuffers = &mdVertices;
+    triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
+    triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-    triangle_input.triangleArray.indexStrideInBytes = 12;
+    triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
     triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
-    triangle_input.triangleArray.indexBuffer = mdIndices;
+    triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
 

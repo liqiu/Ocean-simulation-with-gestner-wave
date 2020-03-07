@@ -14,6 +14,7 @@ set(sources
     GLDisplay.cpp
     GLDisplay.h
     Matrix.h
+	MeshGroup.h
     Preprocessor.h
     Quaternion.h
     Record.h

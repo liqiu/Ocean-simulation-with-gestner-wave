@@ -84,7 +84,17 @@ __device__ float3 linearize( float3 c )
             );
 }
 
+#define M_PI       3.14159265358979323846
 
+__forceinline__ __device__ float3 evaluateEnv(cudaTextureObject_t tex, float3 rayDirection)
+{
+    const float4 texval = tex2D<float4>(
+        tex,
+        atan2f(rayDirection.z, rayDirection.x) * (float)(0.5 / M_PI) + 0.5f,
+        acosf(fmaxf(fminf(rayDirection.y, 1.0f), -1.0f)) * (float)(1.0 / M_PI));
+
+    return make_float3(texval);
+}
 //------------------------------------------------------------------------------
 //
 //
@@ -229,12 +239,13 @@ extern "C" __global__ void __raygen__pinhole()
     const uint32_t image_index  = launch_idx.y * launch_dims.x + launch_idx.x;
     float3         accum_color  = payload.result;
 
+    /*
     if( subframe_index > 0 )
     {
         const float                 a = 1.0f / static_cast<float>( subframe_index+1 );
         const float3 accum_color_prev = make_float3( params.accum_buffer[ image_index ]);
         accum_color = lerp( accum_color_prev, accum_color, a );
-    }
+    }*/
     params.accum_buffer[ image_index ] = make_float4( accum_color, 1.0f);
     params.frame_buffer[ image_index ] = make_color ( accum_color );
 }
@@ -242,7 +253,7 @@ extern "C" __global__ void __raygen__pinhole()
 
 extern "C" __global__ void __miss__constant_radiance()
 {
-    setPayloadResult( params.miss_color );
+    setPayloadResult( evaluateEnv(params.environmentTexture, optixGetWorldRayDirection()) );
 }
 
 

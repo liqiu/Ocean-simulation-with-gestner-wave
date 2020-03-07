@@ -71,6 +71,7 @@ struct LaunchParams
     BufferView<Light::Point> lights;
     float3                   miss_color;
     OptixTraversableHandle   handle;
+    cudaTextureObject_t environmentTexture;
 };
 
 

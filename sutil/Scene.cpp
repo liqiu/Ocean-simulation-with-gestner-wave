@@ -187,7 +187,7 @@ void processGLTFNode(
                 continue;
             }
 
-            auto mesh = std::make_shared<Scene::MeshGroup>();
+            auto mesh = std::make_shared<MeshGroup>();
             scene.addMesh( mesh );
 
 
@@ -556,6 +556,16 @@ cudaTextureObject_t Scene::getSampler( int32_t sampler_index ) const
 }
 
 
+SUTILAPI void Scene::calculateAABB()
+{
+    m_scene_aabb.invalidate();
+    for (const auto mesh : m_meshes)
+        m_scene_aabb.include(mesh->world_aabb);
+
+    if (!m_cameras.empty())
+        m_cameras.front().setLookat(m_scene_aabb.center());
+}
+
 void Scene::finalize()
 {
     createContext();
@@ -566,12 +576,7 @@ void Scene::finalize()
     createPipeline();
     createSBT();
 
-    m_scene_aabb.invalidate();
-    for( const auto mesh: m_meshes )
-        m_scene_aabb.include( mesh->world_aabb );
-
-    if( !m_cameras.empty() )
-        m_cameras.front().setLookat( m_scene_aabb.center() );
+    calculateAABB();
 }
 
 
@@ -1077,7 +1082,7 @@ void Scene::createPTXModule()
     m_pipeline_compile_options.exceptionFlags            = OPTIX_EXCEPTION_FLAG_NONE; // should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
     m_pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
 
-    const std::string ptx = getPtxString( nullptr, "whitted.cu" );
+    const std::string ptx = getPtxString( nullptr, "whitted" );
 
     m_ptx_module  = {};
     char log[2048];

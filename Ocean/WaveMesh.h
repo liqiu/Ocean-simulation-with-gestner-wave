@@ -1,7 +1,10 @@
 #pragma
 
+
 #include "Wave.h"
 #include "MeshKernel.h"
+
+#include <sutil/Matrix.h>
 
 #include <optix.h>
 
@@ -9,10 +12,16 @@
 #include <memory>
 
 
-class Mesh
+namespace sutil
+{
+	struct MeshGroup;
+}
+
+class WaveMesh
 {
 public:
-	~Mesh();
+	WaveMesh();
+	~WaveMesh();
 
 	void generateMesh(float t);
 	void updateMesh(float t);
@@ -21,6 +30,10 @@ public:
 	void updateAccelerationStructure(OptixDeviceContext context);
 
 	OptixTraversableHandle getTraversableHandle() { return mGasHandle; }
+	std::shared_ptr<sutil::MeshGroup> getMesh() { return mpMesh; }
+
+	void setTransform(const sutil::Matrix4x4& transform) { mTransform = transform; }
+	sutil::Matrix4x4 getTransform() const { return mTransform; }
 private:
 	std::vector<Wave> mWaves;
 	CUdeviceptr mdWaves;
@@ -29,10 +42,12 @@ private:
 	uint16_t mSamplesZ = 96;
 	float mLength = 1.f;
 
-	CUdeviceptr mdVertices;
-	CUdeviceptr mdIndices;
+	MeshBuffer mMeshBuffer;
 
 	OptixTraversableHandle mGasHandle = 0;
 	CUdeviceptr mdGasOutputBuffer = 0;
 	CUdeviceptr mdTempBufferGas = 0;
+
+	std::shared_ptr<sutil::MeshGroup> mpMesh;
+	sutil::Matrix4x4 mTransform;
 };

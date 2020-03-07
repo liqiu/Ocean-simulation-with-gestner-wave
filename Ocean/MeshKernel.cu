@@ -69,7 +69,7 @@ __forceinline__ __device__ float3 calculateGerstnerWaveNormal(Wave* waves, int n
 	return sum;
 }
 
-__global__ void generateGridMesh(Vertex* vertices, unsigned int* indices, Wave* waves,
+__global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves,
 	int numWaves, int numSamplesX, int numSamplesZ, float length, float t)
 {
 	unsigned int tx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -86,33 +86,33 @@ __global__ void generateGridMesh(Vertex* vertices, unsigned int* indices, Wave* 
 
 	float3 newPos = make_float3(gridLocation.x, 0.f, gridLocation.y) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
-	vertices[indexVertex].pos = newPos;
+	meshBuffer.pos[indexVertex] = newPos;
 
-	vertices[indexVertex].normal = calculateGerstnerWaveNormal(waves, 
+	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves,
 		numWaves, make_float2(newPos.x, newPos.z), t);
 
 	if (tx < X && ty < Z) {
 		int indexIndices = 6 * (tx * X + ty);
-		indices[indexIndices] = indexVertex;
-		indices[indexIndices + 1] = indexVertex + numSamplesZ;
-		indices[indexIndices + 2] = indexVertex + numSamplesZ + 1;
-		indices[indexIndices + 3] = indexVertex;
-		indices[indexIndices + 4] = indexVertex + numSamplesZ + 1;
-		indices[indexIndices + 5] = indexVertex + 1;
+		meshBuffer.indices[indexIndices] = indexVertex;
+		meshBuffer.indices[indexIndices + 1] = indexVertex + numSamplesZ;
+		meshBuffer.indices[indexIndices + 2] = indexVertex + numSamplesZ + 1;
+		meshBuffer.indices[indexIndices + 3] = indexVertex;
+		meshBuffer.indices[indexIndices + 4] = indexVertex + numSamplesZ + 1;
+		meshBuffer.indices[indexIndices + 5] = indexVertex + 1;
 	}
 }
 
-void cudaGenerateGridMesh(Vertex* vertices, unsigned int* indices, Wave* waves,
-	int numWaves, int numSamplesX, int numSamplesZ, float length, float t)
+void cudaGenerateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
+	int numSamplesX, int numSamplesZ, float length, float t)
 {
 	dim3 block(16, 16, 1);
 	dim3 grid(cuda_iDivUp(numSamplesX, block.x), cuda_iDivUp(numSamplesZ, block.y), 1);
 
-	generateGridMesh << <grid, block, 0, 0 >> > (vertices, indices, waves, numWaves,
+	generateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		numSamplesX, numSamplesZ, length, t);
 }
 
-__global__ void updateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
+__global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 	int numSamplesX, int numSamplesZ, float length, float t)
 {
 	unsigned int tx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -129,18 +129,18 @@ __global__ void updateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
 
 	float3 newPos = make_float3(gridLocation.x, 0.f, gridLocation.y) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
-	vertices[indexVertex].pos = newPos;
+	meshBuffer.pos[indexVertex] = newPos;
 
-	vertices[indexVertex].normal = calculateGerstnerWaveNormal(waves,
+	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves,
 		numWaves, make_float2(newPos.x, newPos.z), t);
 }
 
-void cudaUpdateGridMesh(Vertex* vertices, Wave* waves, int numWaves,
+void cudaUpdateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 	int numSamplesX, int numSamplesZ, float length, float t)
 {
 	dim3 block(16, 16, 1);
 	dim3 grid(cuda_iDivUp(numSamplesX, block.x), cuda_iDivUp(numSamplesZ, block.y), 1);
 
-	updateGridMesh << <grid, block, 0, 0 >> > (vertices, waves, numWaves,
+	updateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		numSamplesX, numSamplesZ, length, t);
 }
