@@ -197,15 +197,11 @@ void initLaunchParams(const sutil::Scene& scene) {
     const float loffset = scene.aabb().maxExtent();
 
     // TODO: add light support to sutil::Scene
-    std::vector<Light::Point> lights(2);
+    std::vector<Light::Point> lights(1);
     lights[0].color = { 1.0f, 1.0f, 0.8f };
     lights[0].intensity = 5.0f;
     lights[0].position = scene.aabb().center() + make_float3(loffset);
     lights[0].falloff = Light::Falloff::QUADRATIC;
-    lights[1].color = { 0.8f, 0.8f, 1.0f };
-    lights[1].intensity = 3.0f;
-    lights[1].position = scene.aabb().center() + make_float3(-loffset, 0.5f * loffset, -0.5f * loffset);
-    lights[1].falloff = Light::Falloff::QUADRATIC;
 
     params.lights.count = static_cast<uint32_t>(lights.size());
     CUDA_CHECK(cudaMalloc(
@@ -453,9 +449,9 @@ int main(int argc, char* argv[])
         createEnvironmentTexture(envFile);
 
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
-        pWave->amplitude = 0.05f;
+        pWave->amplitude = 0.02f;
         pWave->direction = 0.f;
-        pWave->waveLength = 0.2f;
+        pWave->waveLength = 0.5f;
         pWave->speed = 0.5f;
         pWave->steepness = 0.f;
 

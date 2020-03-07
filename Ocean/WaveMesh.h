@@ -40,7 +40,7 @@ private:
 
 	uint16_t mSamplesX = 96;
 	uint16_t mSamplesZ = 96;
-	float mLength = 1.f;
+	float mLength = 10.f;
 
 	MeshBuffer mMeshBuffer;
 
