@@ -66,7 +66,7 @@ __forceinline__ __device__ float3 calculateGerstnerWaveNormal(Wave* waves, int n
 		sum.z += -Di.y * WA * cosRad;
 	}
 
-	return sum;
+	return normalize(sum);
 }
 
 __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves,
