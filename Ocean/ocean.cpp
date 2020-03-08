@@ -388,7 +388,8 @@ int main(int argc, char* argv[])
     //
     std::string outfile;
     std::string envFile;
-    std::string infile = sutil::sampleDataFilePath("WaterBottle/WaterBottle.gltf");
+    std::string infile = sutil::sampleDataFilePath("Island/island.gltf");
+    //std::string infile = sutil::sampleDataFilePath("WaterBottle/WaterBottle.gltf");
 
     for (int i = 1; i < argc; ++i)
     {
@@ -449,15 +450,17 @@ int main(int argc, char* argv[])
         createEnvironmentTexture(envFile);
 
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
-        pWave->amplitude = 0.02f;
-        pWave->direction = 0.f;
-        pWave->waveLength = 0.5f;
-        pWave->speed = 0.5f;
-        pWave->steepness = 0.f;
+        pWave->amplitude = 2.f;
+        pWave->direction = 160.f;
+        pWave->waveLength = 20.f;
+        pWave->speed = 10.f;
+        pWave->steepness = 0.5f;
 
         OPTIX_CHECK(optixInit());
         std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>();
         pMesh->addWave(pWave);
+        sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, 10, 0));
+        pMesh->setTransform(transform);
         pMesh->generateMesh(0.f);
         pMesh->buildAccelerationStructure(scene.context());
 

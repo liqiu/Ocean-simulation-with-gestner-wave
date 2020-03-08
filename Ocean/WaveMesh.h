@@ -38,9 +38,9 @@ private:
 	std::vector<Wave> mWaves;
 	CUdeviceptr mdWaves;
 
-	uint16_t mSamplesX = 96;
-	uint16_t mSamplesZ = 96;
-	float mLength = 10.f;
+	uint16_t mSamplesX = 960;
+	uint16_t mSamplesZ = 960;
+	float mLength = 2000.f;
 
 	MeshBuffer mMeshBuffer;
 

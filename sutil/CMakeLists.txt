@@ -36,7 +36,7 @@ include_directories(
 
 
 # Make the library.
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math -arch sm_50 -lineinfo --keep-device-functions")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math -arch sm_75 -g -G -lineinfo --keep-device-functions")
 set(sutil_target "sutil_7_sdk")
 add_library(${sutil_target}  SHARED ${sources})
 if( WIN32 )

@@ -1164,6 +1164,22 @@ void Scene::createProgramGroups()
                     &m_occlusion_miss_group
                     )
                 );
+
+        memset(&miss_prog_group_desc, 0, sizeof(OptixProgramGroupDesc));
+        miss_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+        miss_prog_group_desc.miss.module = m_ptx_module;  // NULL miss program for refraction rays
+        miss_prog_group_desc.miss.entryFunctionName = "__miss__constant_refraction";
+        sizeof_log = sizeof(log);
+        OPTIX_CHECK_LOG(optixProgramGroupCreate(
+            m_context,
+            &miss_prog_group_desc,
+            1,                             // num program groups
+            &program_group_options,
+            log,
+            &sizeof_log,
+            &m_refraction_miss_group
+        )
+        );
     }
 
     //
@@ -1201,6 +1217,22 @@ void Scene::createProgramGroups()
                     &m_occlusion_hit_group
                     )
                 );
+
+        memset(&hit_prog_group_desc, 0, sizeof(OptixProgramGroupDesc));
+        hit_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+        hit_prog_group_desc.hitgroup.moduleCH = m_ptx_module;
+        hit_prog_group_desc.hitgroup.entryFunctionNameCH = "__closesthit__refraction";
+        sizeof_log = sizeof(log);
+        OPTIX_CHECK(optixProgramGroupCreate(
+            m_context,
+            &hit_prog_group_desc,
+            1,                             // num program groups
+            &program_group_options,
+            log,
+            &sizeof_log,
+            &m_refraction_hit_group
+        )
+        );
     }
 }
 
@@ -1212,8 +1244,10 @@ void Scene::createPipeline()
         m_raygen_prog_group,
         m_radiance_miss_group,
         m_occlusion_miss_group,
+        m_refraction_miss_group,
         m_radiance_hit_group,
-        m_occlusion_hit_group
+        m_occlusion_hit_group,
+        m_refraction_hit_group
     };
 
     OptixPipelineLinkOptions pipeline_link_options = {};
@@ -1262,6 +1296,7 @@ void Scene::createSBT()
         EmptyRecord ms_sbt[ whitted::RAY_TYPE_COUNT ];
         OPTIX_CHECK( optixSbtRecordPackHeader( m_radiance_miss_group,  &ms_sbt[0] ) );
         OPTIX_CHECK( optixSbtRecordPackHeader( m_occlusion_miss_group, &ms_sbt[1] ) );
+        OPTIX_CHECK( optixSbtRecordPackHeader( m_refraction_miss_group, &ms_sbt[2] ) );
 
         CUDA_CHECK( cudaMemcpy(
                     reinterpret_cast<void*>( m_sbt.missRecordBase ),
@@ -1299,6 +1334,9 @@ void Scene::createSBT()
 
                 OPTIX_CHECK( optixSbtRecordPackHeader( m_occlusion_hit_group, &rec ) );
                 hitgroup_records.push_back( rec );
+
+                OPTIX_CHECK(optixSbtRecordPackHeader(m_refraction_hit_group, &rec));
+                hitgroup_records.push_back(rec);
             }
         }
 

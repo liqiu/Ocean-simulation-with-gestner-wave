@@ -29,7 +29,7 @@
 
 #include <cuda/LocalGeometry.h>
 #include <cuda/random.h>
-#include <cuda/whitted.h>
+#include <cuda/whitted.h> 
 #include <sutil/vec_math.h>
 
 #include <stdint.h>
@@ -48,6 +48,36 @@ __constant__ whitted::LaunchParams params;
 // TODO: move into header so can be shared by path tracer and bespoke renderers
 //
 //------------------------------------------------------------------------------
+
+__device__  bool refract(float3& r, const float3& i, const float3& n, const float ior)
+{
+    float3 nn = n;
+    float negNdotV = dot(i, nn);
+    float eta;
+
+    if (negNdotV > 0.0f)
+    {
+        eta = ior;
+        nn = -n;
+        negNdotV = -negNdotV;
+    }
+    else
+    {
+        eta = 1.f / ior;
+    }
+
+    const float k = 1.f - eta * eta * (1.f - negNdotV * negNdotV);
+
+    if (k < 0.0f) {
+        // Initialize this value, so that r always leaves this function initialized.
+        r = make_float3(0.f);
+        return false;
+    }
+    else {
+        r = normalize(eta * i - (eta * negNdotV + sqrtf(k)) * nn);
+        return true;
+    }
+}
 
 __device__ float3 schlick( const float3 spec_color, const float V_dot_H )
 {
@@ -131,8 +161,33 @@ static __forceinline__ __device__ void traceRadiance(
      payload->depth    = u3;
 }
 
-
 static __forceinline__ __device__ bool traceOcclusion(
+    OptixTraversableHandle handle,
+    float3                 ray_origin,
+    float3                 ray_direction,
+    float                  tmin,
+    float                  tmax
+)
+{
+    uint32_t occluded = 0u;
+    optixTrace(
+        handle,
+        ray_origin,
+        ray_direction,
+        tmin,
+        tmax,
+        0.0f,                    // rayTime
+        OptixVisibilityMask(1),
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+        whitted::RAY_TYPE_OCCLUSION,      // SBT offset
+        whitted::RAY_TYPE_COUNT,          // SBT stride
+        whitted::RAY_TYPE_OCCLUSION,      // missSBTIndex
+        occluded);
+    return occluded;
+}
+
+
+static __forceinline__ __device__ float3 traceRefraction(
         OptixTraversableHandle handle,
         float3                 ray_origin,
         float3                 ray_direction,
@@ -140,7 +195,8 @@ static __forceinline__ __device__ bool traceOcclusion(
         float                  tmax
         )
 {
-    uint32_t occluded = 0u;
+    uint32_t u0 = 0, u1 = 0, u2 = 0;
+    float3 result;
     optixTrace(
             handle,
             ray_origin,
@@ -150,13 +206,17 @@ static __forceinline__ __device__ bool traceOcclusion(
             0.0f,                    // rayTime
             OptixVisibilityMask( 1 ),
             OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
-            whitted::RAY_TYPE_OCCLUSION,      // SBT offset
+            whitted::RAY_TYPE_REFRACTION,      // SBT offset
             whitted::RAY_TYPE_COUNT,          // SBT stride
-            whitted::RAY_TYPE_OCCLUSION,      // missSBTIndex
-            occluded );
-    return occluded;
-}
+            whitted::RAY_TYPE_REFRACTION,      // missSBTIndex
+            u0, u1, u2 );
+    
+    result.x = __int_as_float(u0);
+    result.y = __int_as_float(u1);
+    result.z = __int_as_float(u2);
 
+    return result;
+}
 
 __forceinline__ __device__ void setPayloadResult( float3 p )
 {
@@ -256,6 +316,10 @@ extern "C" __global__ void __miss__constant_radiance()
     setPayloadResult( evaluateEnv(params.environmentTexture, optixGetWorldRayDirection()) );
 }
 
+extern "C" __global__ void __miss__constant_refraction()
+{
+    setPayloadResult(make_float3(0.f, 0.47f, 0.75f));
+}
 
 extern "C" __global__ void __closesthit__occlusion()
 {
@@ -267,17 +331,32 @@ extern "C" __global__ void __closesthit__radiance()
 {
     const whitted::HitGroupData* hit_group_data = reinterpret_cast<whitted::HitGroupData*>( optixGetSbtDataPointer() );
     const LocalGeometry          geom = getLocalGeometry(hit_group_data->geometry_data);
-    if (hit_group_data->material_data.pbr.indexOfRefraction > 1.f) 
+    float refraction_index = hit_group_data->material_data.pbr.indexOfRefraction;
+    if (refraction_index > 1.f)
     {
-        float3 R = reflect(optixGetWorldRayDirection(), geom.N);
-        setPayloadResult(evaluateEnv(params.environmentTexture, R));
+        float3 I = optixGetWorldRayDirection();
+        float3 T;
+        float3 result = make_float3(0.f);
+        float3 refraction_color = make_float3(0.f);
+
+        // Refraction
+        if (refract(T, I, geom.N, refraction_index))
+        {
+            const float tmin = 0.001f;
+            const float tmax = 100.f;
+            refraction_color = traceRefraction(params.handle, geom.P, T, tmin, tmax);
+        }
+
+        // Reflection
+        float3 R = reflect(I, geom.N);
+        float3 reflection_color = evaluateEnv(params.environmentTexture, R);
+
+        const float3 F = schlick(make_float3(0.02f), dot(R,  geom.N));
+        result = reflection_color * F + (1.f -F) * refraction_color;
+        setPayloadResult(result);
     }
     else 
     {
-
-        //
-        // Retrieve material data
-        //
         float3 base_color = make_float3(hit_group_data->material_data.pbr.base_color);
         if (hit_group_data->material_data.pbr.base_color_tex)
             base_color *= linearize(make_float3(
@@ -293,25 +372,17 @@ extern "C" __global__ void __closesthit__radiance()
         roughness *= mr_tex.y;
         metallic *= mr_tex.z;
 
-
-        //
-        // Convert to material params
-        //
         const float  F0 = 0.04f;
         const float3 diff_color = base_color * (1.0f - F0) * (1.0f - metallic);
         const float3 spec_color = lerp(make_float3(F0), base_color, metallic);
         const float  alpha = roughness * roughness;
 
-        //
-        // compute direct lighting
-        //
-
         float3 N = geom.N;
-        if (hit_group_data->material_data.pbr.normal_tex)
+        /*if (hit_group_data->material_data.pbr.normal_tex)
         {
             const float4 NN = 2.0f * tex2D<float4>(hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y) - make_float4(1.0f);
             N = normalize(NN.x * normalize(geom.dpdu) + NN.y * normalize(geom.dpdv) + NN.z * geom.N);
-        }
+        }*/
 
         float3 result = make_float3(0.0f);
 
@@ -347,10 +418,83 @@ extern "C" __global__ void __closesthit__radiance()
                 }
             }
         }
-        // TODO: add debug viewing mode that allows runtime switchable views of shading params, normals, etc
-        //result = make_float3( roughness );
-        //result = N*0.5f + make_float3( 0.5f );
-        //result = geom.N*0.5f + make_float3( 0.5f );
+
+        setPayloadResult(result);
+    }
+}
+
+extern "C" __global__ void __closesthit__refraction()
+{
+    const whitted::HitGroupData* hit_group_data = reinterpret_cast<whitted::HitGroupData*>(optixGetSbtDataPointer());
+    const LocalGeometry          geom = getLocalGeometry(hit_group_data->geometry_data);
+    if (hit_group_data->material_data.pbr.indexOfRefraction > 1.f)
+    {
+        setPayloadResult(make_float3(0.95f, 0.95f, 0.95f));
+    }
+    else
+    {
+        float3 base_color = make_float3(hit_group_data->material_data.pbr.base_color);
+        if (hit_group_data->material_data.pbr.base_color_tex)
+            base_color *= linearize(make_float3(
+                tex2D<float4>(hit_group_data->material_data.pbr.base_color_tex, geom.UV.x, geom.UV.y)
+            ));
+
+        float metallic = hit_group_data->material_data.pbr.metallic;
+        float roughness = hit_group_data->material_data.pbr.roughness;
+        float4 mr_tex = make_float4(1.0f);
+        if (hit_group_data->material_data.pbr.metallic_roughness_tex)
+            // MR tex is (occlusion, roughness, metallic )
+            mr_tex = tex2D<float4>(hit_group_data->material_data.pbr.metallic_roughness_tex, geom.UV.x, geom.UV.y);
+        roughness *= mr_tex.y;
+        metallic *= mr_tex.z;
+
+
+        const float  F0 = 0.04f;
+        const float3 diff_color = base_color * (1.0f - F0) * (1.0f - metallic);
+        const float3 spec_color = lerp(make_float3(F0), base_color, metallic);
+        const float  alpha = roughness * roughness;
+
+        float3 N = geom.N;
+        //if (hit_group_data->material_data.pbr.normal_tex)
+        //{
+        //    const float4 NN = 2.0f * tex2D<float4>(hit_group_data->material_data.pbr.normal_tex, geom.UV.x, geom.UV.y) - make_float4(1.0f);
+        //    N = normalize(NN.x * normalize(geom.dpdu) + NN.y * normalize(geom.dpdv) + NN.z * geom.N);
+        //}
+
+        float3 result = make_float3(0.0f);
+
+        for (int i = 0; i < params.lights.count; ++i)
+        {
+            Light::Point light = params.lights[i];
+
+            // TODO: optimize
+            const float  L_dist = length(light.position - geom.P);
+            const float3 L = (light.position - geom.P) / L_dist;
+            const float3 V = -normalize(optixGetWorldRayDirection());
+            const float3 H = normalize(L + V);
+            const float  N_dot_L = dot(N, L);
+            const float  N_dot_V = dot(N, V);
+            const float  N_dot_H = dot(N, H);
+            const float  V_dot_H = dot(V, H);
+
+            if (N_dot_L > 0.0f && N_dot_V > 0.0f)
+            {
+                const float tmin = 0.001f;          // TODO
+                const float tmax = L_dist - 0.001f; // TODO
+                const bool  occluded = false;// traceOcclusion(params.handle, geom.P, L, tmin, tmax);
+                if (!occluded)
+                {
+                    const float3 F = schlick(spec_color, V_dot_H);
+                    const float  G_vis = vis(N_dot_L, N_dot_V, alpha);
+                    const float  D = ggxNormal(N_dot_H, alpha);
+
+                    const float3 diff = (1.0f - F) * diff_color / M_PIf;
+                    const float3 spec = F * G_vis * D;
+
+                    result += light.color * light.intensity * N_dot_L * (diff + spec);
+                }
+            }
+        }
         setPayloadResult(result);
     }
 }

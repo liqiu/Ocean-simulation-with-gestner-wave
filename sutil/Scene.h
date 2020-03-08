@@ -118,8 +118,10 @@ private:
     OptixProgramGroup                    m_raygen_prog_group        = 0;
     OptixProgramGroup                    m_radiance_miss_group      = 0;
     OptixProgramGroup                    m_occlusion_miss_group     = 0;
+    OptixProgramGroup                    m_refraction_miss_group    = 0;
     OptixProgramGroup                    m_radiance_hit_group       = 0;
     OptixProgramGroup                    m_occlusion_hit_group      = 0;
+    OptixProgramGroup                    m_refraction_hit_group     = 0;
     OptixTraversableHandle               m_ias_handle               = 0;
     CUdeviceptr                          m_d_ias_output_buffer      = 0;
 };
