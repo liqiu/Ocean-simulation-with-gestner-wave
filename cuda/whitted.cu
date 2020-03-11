@@ -116,12 +116,24 @@ __device__ float3 linearize( float3 c )
 
 #define M_PI       3.14159265358979323846
 
+
 __forceinline__ __device__ float3 evaluateEnv(cudaTextureObject_t tex, float3 rayDirection)
 {
+    float3 skyUp = make_float3(0.f, 1.f, 0.f);
+    const float directionDotUp = dot(rayDirection, skyUp);
+    float3 queryDir = rayDirection;
+    if (directionDotUp < 0.0f)
+    {
+        return make_float3(1.f, 0.f, 0.f);
+        float3 clampedDir = normalize(cross(rayDirection, skyUp));
+        clampedDir = normalize(cross(skyUp, clampedDir));
+        queryDir = clampedDir;
+    }
+
     const float4 texval = tex2D<float4>(
         tex,
-        atan2f(rayDirection.z, rayDirection.x) * (float)(0.5 / M_PI) + 0.5f,
-        acosf(fmaxf(fminf(rayDirection.y, 1.0f), -1.0f)) * (float)(1.0 / M_PI));
+        atan2f(queryDir.z, queryDir.x) * (float)(0.5 / M_PI) + 0.5f,
+        acosf(fmaxf(fminf(queryDir.y, 1.0f), -1.0f)) * (float)(1.0 / M_PI));
 
     return make_float3(texval);
 }
