@@ -2,16 +2,44 @@
 
 #include <sutil/vec_math.h>
 
+#include <cuda/cuda_noise.cuh>
+
 #include <math_constants.h>
 #include <cuda_runtime_api.h>
 #include <vector_types.h>
 #include <vector_functions.hpp>
 
 
+#define NOISE_STRENGTH 0.8
+
 //Round a / b to nearest higher integer value
 int cuda_iDivUp(int a, int b)
 {
 	return (a + (b - 1)) / b;
+}
+
+__device__ float fBM(int numOctaves, float3 coordinate, float persistence, float scale, float low, float high, int seed)
+{
+	float maxAmp = 0;
+	float amp = 1;
+	float freq = scale;
+	float noise = 0;
+
+	// add successively smaller, higher - frequency terms
+	for (int i = 0; i < numOctaves; ++i) {
+		noise += cudaNoise::simplexNoise(coordinate, freq, seed) * amp;
+		maxAmp += amp;
+		amp *= persistence;
+		freq *= 2;
+	}
+
+	// take the average value of the iterations
+	noise /= maxAmp;
+
+	// normalize the result
+	noise = noise * (high - low) / 2 + (high + low) / 2;
+
+	return noise;
 }
 
 __forceinline__ __device__ float3 calculateGerstnerWaveOffset(Wave* waves, int numWaves,
@@ -86,6 +114,10 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves,
 
 	float3 newPos = make_float3(gridLocation.x, 0.f, gridLocation.y) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
+
+	float noise = fBM(1, newPos, 0.5, 0.03, -NOISE_STRENGTH, NOISE_STRENGTH, 9);
+	newPos.y += noise;
+
 	meshBuffer.pos[indexVertex] = newPos;
 
 	//meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves,
@@ -165,6 +197,10 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 
 	float3 newPos = make_float3(gridLocation.x, 0.f, gridLocation.y) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
+
+	float noise = fBM(1, newPos, 0.5, 0.05, -NOISE_STRENGTH, NOISE_STRENGTH, 9);
+	newPos.y += noise;
+
 	meshBuffer.pos[indexVertex] = newPos;
 
 //	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves,
