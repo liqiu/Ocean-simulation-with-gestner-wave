@@ -452,13 +452,37 @@ int main(int argc, char* argv[])
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
         pWave->amplitude = 2.f;
         pWave->direction = 160.f;
-        pWave->waveLength = 20.f;
-        pWave->speed = 10.f;
-        pWave->steepness = 0.5f;
+        pWave->waveLength = 40.f;
+        pWave->speed = 5 * sqrt(pWave->waveLength);
+        pWave->steepness = 0.9f;
+
+        std::shared_ptr<Wave> pWave2 = std::make_shared<Wave>();
+        pWave2->amplitude = 1.6f;
+        pWave2->direction = 110.f;
+        pWave2->waveLength = 30.f;
+        pWave2->speed = 4 * sqrt(pWave2->waveLength);
+        pWave2->steepness = 0.9f;
+
+        std::shared_ptr<Wave> pWave3 = std::make_shared<Wave>();
+        pWave3->amplitude = 3.f;
+        pWave3->direction = 210.f;
+        pWave3->waveLength = 50.f;
+        pWave3->speed = 6 * sqrt(pWave3->waveLength);
+        pWave3->steepness = 0.8f;
+
+        std::shared_ptr<Wave> pWave4 = std::make_shared<Wave>();
+        pWave4->amplitude = 2.f;
+        pWave4->direction = 270.f;
+        pWave4->waveLength = 25.f;
+        pWave4->speed = 3.8 * sqrt(pWave4->waveLength);
+        pWave4->steepness = 0.9f;
 
         OPTIX_CHECK(optixInit());
         std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>();
         pMesh->addWave(pWave);
+        pMesh->addWave(pWave2);
+        pMesh->addWave(pWave3);
+        pMesh->addWave(pWave4);
         sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, 10, 0));
         pMesh->setTransform(transform);
         pMesh->generateMesh(0.f);

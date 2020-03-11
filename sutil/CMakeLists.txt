@@ -55,7 +55,10 @@ if(WIN32)
 endif()
 
 set(optix_target "sutil_optix_module")
-add_library(${optix_target} OBJECT ${SAMPLES_CUDA_DIR}/whitted.cu)
+add_library(${optix_target} OBJECT 
+  ${SAMPLES_CUDA_DIR}/whitted.cu
+  ${SAMPLES_CUDA_DIR}/cuda_noise.cuh
+  )
 set_property(TARGET ${optix_target} PROPERTY CUDA_PTX_COMPILATION ON)
 
 install(TARGETS ${optix_target} OBJECTS DESTINATION ${PROJECT_BINARY_DIR}/bin/ptx )

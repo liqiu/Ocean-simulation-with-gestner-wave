@@ -124,7 +124,6 @@ __forceinline__ __device__ float3 evaluateEnv(cudaTextureObject_t tex, float3 ra
     float3 queryDir = rayDirection;
     if (directionDotUp < 0.0f)
     {
-        return make_float3(1.f, 0.f, 0.f);
         float3 clampedDir = normalize(cross(rayDirection, skyUp));
         clampedDir = normalize(cross(skyUp, clampedDir));
         queryDir = clampedDir;
