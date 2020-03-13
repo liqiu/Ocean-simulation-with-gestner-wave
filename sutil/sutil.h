@@ -37,6 +37,7 @@
 #include "sutilapi.h"
 
 
+struct ImGuiContext;
 struct GLFWwindow;
 
 // Some helper macros to stringify the sample's name that comes in as a define
@@ -81,6 +82,7 @@ SUTILAPI void        cleanupUI( GLFWwindow* window );
 
 SUTILAPI void        beginFrameImGui();
 SUTILAPI void        endFrameImGui();
+SUTILAPI ImGuiContext* getContextImGui();
 
 // Display frames per second, where the OpenGL context
 // is managed by the caller.

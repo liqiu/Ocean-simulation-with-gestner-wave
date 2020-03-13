@@ -259,7 +259,7 @@ void initImGui( GLFWwindow* window )
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
 
-    ImGui_ImplGlfw_InitForOpenGL( window, false );
+    ImGui_ImplGlfw_InitForOpenGL( window, true );
     ImGui_ImplOpenGL3_Init();
     ImGui::StyleColorsDark();
     io.Fonts->AddFontDefault();
@@ -302,6 +302,10 @@ void endFrameImGui()
     ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
 }
 
+ImGuiContext* getContextImGui()
+{
+    return ImGui::GetCurrentContext();
+}
 
 void displayBufferWindow( const char* title, const ImageBuffer& buffer )
 {
@@ -480,7 +484,6 @@ void displayStats( std::chrono::duration<double>& state_update_time,
 
     const auto cur_time = std::chrono::steady_clock::now();
 
-    beginFrameImGui();
     last_update_frames++;
 
     typedef std::chrono::duration<double, std::milli> durationMs;
@@ -502,7 +505,6 @@ void displayStats( std::chrono::duration<double>& state_update_time,
         state_update_time = render_time = display_time = std::chrono::duration<double>::zero();
     }
     displayText( display_text, 10.0f, 10.0f );
-    endFrameImGui();
 
     ++total_subframe_count;
 }

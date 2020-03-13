@@ -53,6 +53,7 @@
 #include <sutil/vec_math.h>
 
 #include <GLFW/glfw3.h>
+#include <imgui/imgui.h>
 
 #include <array>
 #include <cstring>
@@ -103,8 +104,9 @@ static void mouseButtonCallback(GLFWwindow* window, int button, int action, int 
 {
     double xpos, ypos;
     glfwGetCursorPos(window, &xpos, &ypos);
+    bool imgui_hover = ImGui::IsAnyWindowHovered();
 
-    if (action == GLFW_PRESS)
+    if (action == GLFW_PRESS && !imgui_hover)
     {
         mouse_button = button;
         trackball.startTracking(static_cast<int>(xpos), static_cast<int>(ypos));
@@ -373,6 +375,23 @@ bool createEnvironmentTexture(std::string& fileName)
     return true;
 }
 
+void renderImgui(std::chrono::duration<double>& state_update_time,
+    std::chrono::duration<double>& render_time,
+    std::chrono::duration<double>& display_time)
+{
+    sutil::beginFrameImGui();
+    sutil::displayStats(state_update_time, render_time, display_time);
+    // Atmosphere Parameters GUI
+    ImGui::Begin("Atmosphere Parameters");
+    ImGui::ColorEdit3("Sun Color", (float*)&params.sunColor);
+    ImGui::SliderFloat("Sun Distance", (float*)&params.sunDistance, 100.f, 10000.f);
+    ImGui::SliderFloat("Sun Azimuth", (float*)&params.sunAzimuth, 0.f, 360);
+    ImGui::SliderFloat("Sun Elevation", (float*)&params.sunElevation, 0.f, 90);
+    ImGui::End();
+    
+    sutil::endFrameImGui();
+}
+
 //------------------------------------------------------------------------------
 //
 // Main
@@ -510,6 +529,10 @@ int main(int argc, char* argv[])
             glfwSetScrollCallback(window, scrollCallback);
             glfwSetWindowUserPointer(window, &params);
 
+            ImGui::SetCurrentContext(sutil::getContextImGui());
+            ImGuiIO& io = ImGui::GetIO(); (void)io;
+            io.ConfigWindowsMoveFromTitleBarOnly = true;
+            ImGui::StyleColorsDark();
             //
             // Render loop
             //
@@ -546,8 +569,8 @@ int main(int argc, char* argv[])
                     t1 = std::chrono::steady_clock::now();
                     display_time += t1 - t0;
 
-                    sutil::displayStats(state_update_time, render_time, display_time);
-
+                    renderImgui(state_update_time, render_time, display_time);
+                    
                     glfwSwapBuffers(window);
 
                     ++params.subframe_index;

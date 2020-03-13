@@ -70,6 +70,11 @@ struct LaunchParams
     float3                   V;
     float3                   W;
 
+    float3 sunColor;
+    float sunDistance;
+    float sunAzimuth;
+    float sunElevation;
+
     BufferView<Light::Point> lights;
     float3                   miss_color;
     OptixTraversableHandle   handle;
