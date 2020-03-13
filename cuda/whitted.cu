@@ -30,17 +30,52 @@
 #include <cuda/LocalGeometry.h>
 #include <cuda/random.h>
 #include <cuda/whitted.h> 
+#include <cuda/sun.cuh> 
 #include <sutil/vec_math.h>
 
 #include <stdint.h>
 
 #include <stdio.h>
 
+
 extern "C"
 {
 __constant__ whitted::LaunchParams params;
 }
 
+
+__device__ inline float degree_to_radians(
+    float degree)
+{
+
+    return degree * M_PIf / 180.0f;
+
+}
+
+
+__device__ inline float3 degree_to_cartesian(
+    float azimuth,
+    float elevation)
+{
+
+    float az = clamp(azimuth, .0f, 360.0f);
+    float el = clamp(elevation, -90.0f, 90.0f);
+
+    az = degree_to_radians(az);
+    el = degree_to_radians(90.0f - el);
+
+    float x = sinf(el) * cosf(az);
+    float y = cosf(el);
+    float z = sinf(el) * sinf(az);
+
+    return normalize(make_float3(x, y, z));
+}
+
+__device__ inline float3 sunPosition()
+{
+    float3 sun = params.sunDistance * degree_to_cartesian(params.sunAzimuth, params.sunElevation);
+    return sun;
+}
 
 //------------------------------------------------------------------------------
 //
@@ -360,10 +395,14 @@ extern "C" __global__ void __closesthit__radiance()
 
         // Reflection
         float3 R = reflect(I, geom.N);
-        float3 reflection_color = evaluateEnv(params.environmentTexture, R);
+        float3 env_color = evaluateEnv(params.environmentTexture, R);
+
+        float3 sunDir = normalize(sunPosition() - geom.P);
+        float3 reflectionSun = params.sunColor * pow(max(dot(R, sunDir), 0.0), 32);
+        float3 refectionColor = 0.5 * env_color + 1.5 * reflectionSun;
 
         const float3 F = schlick(make_float3(0.02f), dot(R,  geom.N));
-        result = reflection_color * F + (1.f -F) * refraction_color;
+        result = refectionColor * F + (1.f -F) * refraction_color;
         setPayloadResult(result);
     }
     else 

@@ -10,7 +10,7 @@
 #include <vector_functions.hpp>
 
 
-#define NOISE_STRENGTH 0.15
+#define NOISE_STRENGTH 0.5
 
 //Round a / b to nearest higher integer value
 int cuda_iDivUp(int a, int b)
