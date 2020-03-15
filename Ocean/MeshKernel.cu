@@ -129,11 +129,13 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWave
 
 	float3 samplePoint;
 	unsigned int indexVertex = tx * numSamplesY + ty;
+/*
 	if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
 		meshBuffer.validityMask[indexVertex] = false;
 		meshBuffer.pos[indexVertex] = samplePoint;
 		return;
-	}
+	}*/
+	samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
 
 	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
 	meshBuffer.validityMask[indexVertex] = true;
@@ -227,7 +229,7 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 		meshBuffer.pos[indexVertex] = samplePoint;
 		return;
 	}
-
+	//samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
 	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
 	meshBuffer.validityMask[indexVertex] = true;
 }
