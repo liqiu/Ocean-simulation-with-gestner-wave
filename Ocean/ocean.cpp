@@ -389,6 +389,10 @@ void renderImgui(std::chrono::duration<double>& state_update_time,
     ImGui::SliderFloat("Sun Elevation", (float*)&params.sunElevation, 0.f, 90);
     ImGui::End();
     
+    ImGui::Begin("Water Parameters");
+    ImGui::ColorEdit3("Water Color", (float*)&params.waterColor);
+    ImGui::End();
+
     sutil::endFrameImGui();
 }
 
@@ -407,7 +411,8 @@ int main(int argc, char* argv[])
     //
     std::string outfile;
     std::string envFile;
-    std::string infile = sutil::sampleDataFilePath("Island/island.gltf");
+    //std::string infile = sutil::sampleDataFilePath("Island/island.gltf");
+    std::string infile = sutil::sampleDataFilePath("map_gta5/scene.gltf");
     //std::string infile = sutil::sampleDataFilePath("WaterBottle/WaterBottle.gltf");
 
     for (int i = 1; i < argc; ++i)
@@ -502,7 +507,7 @@ int main(int argc, char* argv[])
         pMesh->addWave(pWave2);
         pMesh->addWave(pWave3);
         pMesh->addWave(pWave4);
-        sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, 10, 0));
+        sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, -685, 0));
         pMesh->setTransform(transform);
         pMesh->generateMesh(0.f);
         pMesh->buildAccelerationStructure(scene.context());

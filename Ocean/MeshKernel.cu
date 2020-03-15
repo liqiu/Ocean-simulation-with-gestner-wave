@@ -198,7 +198,7 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 	float3 newPos = make_float3(gridLocation.x, 0.f, gridLocation.y) +
 		calculateGerstnerWaveOffset(waves, numWaves, gridLocation, t);
 
-	float noise = fBM(2, make_float3(gridLocation, t), 0.5, 0.15, -NOISE_STRENGTH, NOISE_STRENGTH, 9);
+	float noise = fBM(2, make_float3(gridLocation, t), 0.5, 0.3, -NOISE_STRENGTH, NOISE_STRENGTH, 9);
 	newPos.y += noise;
 
 	meshBuffer.pos[indexVertex] = newPos;

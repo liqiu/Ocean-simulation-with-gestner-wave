@@ -364,7 +364,7 @@ extern "C" __global__ void __miss__constant_radiance()
 
 extern "C" __global__ void __miss__constant_refraction()
 {
-    setPayloadResult(make_float3(0.f, 0.47f, 0.75f));
+    setPayloadResult(params.waterColor);
 }
 
 extern "C" __global__ void __closesthit__occlusion()
@@ -398,7 +398,7 @@ extern "C" __global__ void __closesthit__radiance()
         float3 env_color = evaluateEnv(params.environmentTexture, R);
 
         float3 sunDir = normalize(sunPosition() - geom.P);
-        float3 reflectionSun = params.sunColor * pow(max(dot(R, sunDir), 0.0), 32);
+        float3 reflectionSun = params.sunColor * pow(max(dot(R, sunDir), 0.0), 64);
         float3 refectionColor = 0.5 * env_color + 1.5 * reflectionSun;
 
         const float3 F = schlick(make_float3(0.02f), dot(R,  geom.N));
