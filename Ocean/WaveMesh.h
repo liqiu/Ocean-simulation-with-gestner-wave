@@ -1,4 +1,4 @@
-#pragma
+#pragma once
 
 
 #include "Wave.h"
@@ -17,10 +17,14 @@ namespace sutil
 	struct MeshGroup;
 }
 
+
+struct ProjectedGrid;
+
+
 class WaveMesh
 {
 public:
-	WaveMesh();
+	WaveMesh(int windowWidth, int windowHeight, int samplesPerPixel = 1);
 	~WaveMesh();
 
 	void generateMesh(float t);
@@ -32,15 +36,18 @@ public:
 	OptixTraversableHandle getTraversableHandle() { return mGasHandle; }
 	std::shared_ptr<sutil::MeshGroup> getMesh() { return mpMesh; }
 
-	void setTransform(const sutil::Matrix4x4& transform) { mTransform = transform; }
+	void setTransform(const sutil::Matrix4x4& transform);
 	sutil::Matrix4x4 getTransform() const { return mTransform; }
+
+	void updateCamera(const float3& eye, const float3& U, const float3& V, const float3& W);
 private:
+
 	std::vector<Wave> mWaves;
 	CUdeviceptr mdWaves;
 
-	uint16_t mSamplesX = 3840;
-	uint16_t mSamplesZ = 3840;
-	float mLength = 10000.f;
+	int mWindowWidth;
+	int mWindowHeight;
+	int mSamplesPerPixel;
 
 	MeshBuffer mMeshBuffer;
 
@@ -50,4 +57,6 @@ private:
 
 	std::shared_ptr<sutil::MeshGroup> mpMesh;
 	sutil::Matrix4x4 mTransform;
+
+	std::shared_ptr<ProjectedGrid> mpProjectedGrid;
 };

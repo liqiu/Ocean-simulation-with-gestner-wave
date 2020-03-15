@@ -502,13 +502,16 @@ int main(int argc, char* argv[])
         pWave4->steepness = 0.9f;
 
         OPTIX_CHECK(optixInit());
-        std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>();
+        std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>(width, height);
         pMesh->addWave(pWave);
         pMesh->addWave(pWave2);
         pMesh->addWave(pWave3);
         pMesh->addWave(pWave4);
         sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, -685, 0));
         pMesh->setTransform(transform);
+        float3 U, V, W;
+        camera.UVWFrame(U, V, W);
+        pMesh->updateCamera(camera.eye(), U, V, W);
         pMesh->generateMesh(0.f);
         pMesh->buildAccelerationStructure(scene.context());
 
@@ -551,10 +554,14 @@ int main(int argc, char* argv[])
                 std::chrono::duration<double> render_time(0.0);
                 std::chrono::duration<double> display_time(0.0);
 
+                float3 U, V, W;
                 do
                 {
                     auto t0 = std::chrono::steady_clock::now();
                     glfwPollEvents();
+
+                    camera.UVWFrame(U, V, W);
+                    pMesh->updateCamera(camera.eye(), U, V, W);
 
                     t = std::chrono::duration<float>(t0 - t00).count();
                     pMesh->updateMesh(t);

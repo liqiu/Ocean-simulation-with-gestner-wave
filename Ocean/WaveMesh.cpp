@@ -1,4 +1,5 @@
 #include "WaveMesh.h"
+#include "ProjectedGrid.h"
 
 #include <sutil/Matrix.h>
 #include <sutil/MeshGroup.h>
@@ -14,9 +15,17 @@
 #include <algorithm>
 
 
-WaveMesh::WaveMesh()
+WaveMesh::WaveMesh(int windowWidth, int windowHeight, int samplesPerPixel) :
+    mWindowWidth(windowWidth),
+    mWindowHeight(windowHeight),
+    mSamplesPerPixel(samplesPerPixel)
 {
     mTransform = sutil::Matrix4x4::identity();
+
+    mpProjectedGrid = std::make_shared<ProjectedGrid>();
+    mpProjectedGrid->infinite = 2000;
+    mpProjectedGrid->samplesU = windowWidth * samplesPerPixel;
+    mpProjectedGrid->samplesV = windowHeight * samplesPerPixel;
 }
 
 WaveMesh::~WaveMesh()
@@ -24,28 +33,36 @@ WaveMesh::~WaveMesh()
     CUDA_CHECK(cudaFree((void*)mdGasOutputBuffer));
     CUDA_CHECK(cudaFree((void*)mdTempBufferGas));
     CUDA_CHECK(cudaFree((void*)mdWaves));
+
+    CUDA_CHECK(cudaFree((void*)mMeshBuffer.pos));
+    CUDA_CHECK(cudaFree((void*)mMeshBuffer.normal));
+    CUDA_CHECK(cudaFree((void*)mMeshBuffer.indices));
+    CUDA_CHECK(cudaFree((void*)mMeshBuffer.validityMask));
 }
 
 void WaveMesh::generateMesh(float t)
 {
-    size_t verticesByteSize = mSamplesX * mSamplesZ * sizeof(float3);
-    size_t indicesByteSize = 4 * (mSamplesX - 1) * (mSamplesZ - 1) * 6;
+    size_t verticesByteSize = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV * sizeof(float3);
+    size_t indicesByteSize = 4 * (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 6;
     size_t waveByteSize = mWaves.size() * sizeof(Wave);
 
-    float3* dVertices, *dNormals;
+    float3* dVertices, * dNormals;
+    bool* dValidityMask;
     uint32_t* dIndices;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dVertices), verticesByteSize));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dValidityMask), verticesByteSize));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dNormals), verticesByteSize));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dIndices), indicesByteSize));
     mMeshBuffer.pos = dVertices;
     mMeshBuffer.normal = dNormals;
     mMeshBuffer.indices = dIndices;
+    mMeshBuffer.validityMask = dValidityMask;
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdWaves), waveByteSize));
     CUDA_CHECK(cudaMemcpy((void*)mdWaves, mWaves.data(), waveByteSize, cudaMemcpyHostToDevice));
 
     cudaGenerateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves), mWaves.size(),
-        mSamplesX, mSamplesZ, mLength, t);
+        *mpProjectedGrid, t);
 
     mpMesh = std::make_shared<sutil::MeshGroup>();
     mpMesh->name = "Wave";
@@ -57,38 +74,40 @@ void WaveMesh::generateMesh(float t)
     for (auto wave : mWaves) {
         maxAmplitude = std::max((float)maxAmplitude, wave.amplitude);
     }
-    mpMesh->object_aabb.m_min = make_float3(-mLength / 2, -maxAmplitude, -mLength / 2);
-    mpMesh->object_aabb.m_max = make_float3(mLength / 2, maxAmplitude, mLength / 2);
+    mpMesh->object_aabb.m_min = make_float3(-mpProjectedGrid->infinite, -maxAmplitude, -mpProjectedGrid->infinite);
+    mpMesh->object_aabb.m_max = make_float3(mpProjectedGrid->infinite, maxAmplitude, mpProjectedGrid->infinite);
     mpMesh->world_aabb = mpMesh->object_aabb;
     mpMesh->world_aabb.transform(mTransform);
    
     BufferView<float3> bvPos;
     bvPos.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.pos);
     bvPos.byte_stride = sizeof(float3);
-    bvPos.count = mSamplesX * mSamplesZ;
+    bvPos.count = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
     bvPos.elmt_byte_size = sizeof(float3);
     mpMesh->positions.push_back(bvPos);
 
     BufferView<float3> bvNormal;
     bvNormal.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.normal);
     bvNormal.byte_stride = sizeof(float3);
-    bvNormal.count = mSamplesX * mSamplesZ;
+    bvNormal.count = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
     bvNormal.elmt_byte_size = sizeof(float3);
     mpMesh->normals.push_back(bvNormal);
 
     BufferView<uint32_t> bvIndices;
     bvIndices.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     bvIndices.byte_stride = sizeof(uint32_t);
-    bvIndices.count = (mSamplesX - 1) * (mSamplesZ - 1) * 6;
+    bvIndices.count = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 6;
     bvIndices.elmt_byte_size = sizeof(uint32_t);
     mpMesh->indices.push_back(bvIndices);
+
 }
 
 void WaveMesh::updateMesh(float t)
 {
     cudaUpdateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves),
-        mWaves.size(), mSamplesX, mSamplesZ, mLength, t);
+        mWaves.size(), *mpProjectedGrid, t);
 }
+
 
 void WaveMesh::buildAccelerationStructure(OptixDeviceContext context)
 {
@@ -100,12 +119,12 @@ void WaveMesh::buildAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
+    triangle_input.triangleArray.numVertices = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
     triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
-    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 2;
     triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
@@ -149,12 +168,12 @@ void WaveMesh::updateAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mSamplesX * mSamplesZ;
+    triangle_input.triangleArray.numVertices = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
     triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
-    triangle_input.triangleArray.numIndexTriplets = (mSamplesX - 1) * (mSamplesZ - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 2;
     triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
@@ -178,4 +197,18 @@ void WaveMesh::updateAccelerationStructure(OptixDeviceContext context)
         nullptr,  // emitted property list
         0             // num emitted properties
     ));
+}
+
+void WaveMesh::setTransform(const sutil::Matrix4x4& transform)
+{
+    mTransform = transform;
+    mpProjectedGrid->waveHeight = mTransform.getData()[7]; // Assume vertical translation
+}
+
+void WaveMesh::updateCamera(const float3& eye, const float3& U, const float3& V, const float3& W)
+{
+    mpProjectedGrid->eye = eye;
+    mpProjectedGrid->U = U;
+    mpProjectedGrid->V = V;
+    mpProjectedGrid->W = W;
 }
