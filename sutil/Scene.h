@@ -92,6 +92,7 @@ public:
     SUTILAPI void createContext();
     SUTILAPI void buildMeshAccels();
     SUTILAPI void buildInstanceAccel( int rayTypeCount = whitted::RAY_TYPE_COUNT );
+    SUTILAPI void updateInstanceAccel();
     SUTILAPI void createPTXModule();
     SUTILAPI void createProgramGroups();
     SUTILAPI void createPipeline();
@@ -114,6 +115,10 @@ private:
     OptixPipelineCompileOptions          m_pipeline_compile_options = {};
     OptixPipeline                        m_pipeline                 = 0;
     OptixModule                          m_ptx_module               = 0;
+
+    CUdeviceptr  md_instances;
+    CUdeviceptr md_temp_buffer;
+    std::vector<OptixInstance> m_optix_instances;
 
     OptixProgramGroup                    m_raygen_prog_group        = 0;
     OptixProgramGroup                    m_radiance_miss_group      = 0;

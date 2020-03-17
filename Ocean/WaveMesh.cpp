@@ -21,6 +21,7 @@ WaveMesh::WaveMesh(int windowWidth, int windowHeight, int samplesPerPixel) :
     mSamplesPerPixel(samplesPerPixel)
 {
     mTransform = sutil::Matrix4x4::identity();
+    mpMesh = std::make_shared<sutil::MeshGroup>();
 
     mpProjectedGrid = std::make_shared<ProjectedGrid>();
     mpProjectedGrid->infinite = 2000;
@@ -64,7 +65,6 @@ void WaveMesh::generateMesh(float t)
     cudaGenerateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves), mWaves.size(),
         *mpProjectedGrid, t);
 
-    mpMesh = std::make_shared<sutil::MeshGroup>();
     mpMesh->name = "Wave";
     mpMesh->material_idx.push_back(-1);
     mpMesh->texcoords.push_back(BufferView<float2>());
@@ -211,4 +211,7 @@ void WaveMesh::updateCamera(const float3& eye, const float3& U, const float3& V,
     mpProjectedGrid->U = U;
     mpProjectedGrid->V = V;
     mpProjectedGrid->W = W;
+
+    sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(eye.x, mTransform.getData()[7], eye.z));
+    mpMesh->transform = transform;
 }

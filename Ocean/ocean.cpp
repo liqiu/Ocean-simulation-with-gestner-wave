@@ -241,8 +241,9 @@ void handleCameraUpdate(whitted::LaunchParams& params)
         << "\tU: " << params.U.x << ", " << params.U.y << ", " << params.U.z << std::endl
         << "\tV: " << params.V.x << ", " << params.V.y << ", " << params.V.z << std::endl
         << "\tW: " << params.W.x << ", " << params.W.y << ", " << params.W.z << std::endl;
-        */
-
+        
+    std::cerr
+        << "Eye:" << params.eye.x << "," << params.eye.y << "," << params.eye.z << std::endl;*/
 }
 
 
@@ -566,6 +567,7 @@ int main(int argc, char* argv[])
                     t = std::chrono::duration<float>(t0 - t00).count();
                     pMesh->updateMesh(t);
                     pMesh->updateAccelerationStructure(scene.context());
+                    scene.updateInstanceAccel();
 
                     updateState(output_buffer, params);
                     auto t1 = std::chrono::steady_clock::now();

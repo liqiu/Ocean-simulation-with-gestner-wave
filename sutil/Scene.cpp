@@ -991,13 +991,13 @@ void Scene::buildInstanceAccel( int rayTypeCount )
 {
     const size_t num_instances = m_meshes.size();
 
-    std::vector<OptixInstance> optix_instances( num_instances );
+    m_optix_instances.resize( num_instances );
 
     unsigned int sbt_offset = 0;
     for( size_t i = 0; i < m_meshes.size(); ++i )
     {
         auto  mesh = m_meshes[i];
-        auto& optix_instance = optix_instances[i];
+        auto& optix_instance = m_optix_instances[i];
         memset( &optix_instance, 0, sizeof( OptixInstance ) );
 
         optix_instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
@@ -1011,22 +1011,22 @@ void Scene::buildInstanceAccel( int rayTypeCount )
     }
 
     const size_t instances_size_in_bytes = sizeof( OptixInstance ) * num_instances;
-    CUdeviceptr  d_instances;
-    CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_instances ), instances_size_in_bytes ) );
+    
+    CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &md_instances ), instances_size_in_bytes ) );
     CUDA_CHECK( cudaMemcpy(
-                reinterpret_cast<void*>( d_instances ),
-                optix_instances.data(),
+                reinterpret_cast<void*>( md_instances ),
+                m_optix_instances.data(),
                 instances_size_in_bytes,
                 cudaMemcpyHostToDevice
                 ) );
 
     OptixBuildInput instance_input = {};
     instance_input.type                       = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-    instance_input.instanceArray.instances    = d_instances;
+    instance_input.instanceArray.instances    = md_instances;
     instance_input.instanceArray.numInstances = static_cast<unsigned int>( num_instances );
 
     OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags                  = OPTIX_BUILD_FLAG_NONE;
+    accel_options.buildFlags                  = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
     accel_options.operation                   = OPTIX_BUILD_OPERATION_BUILD;
 
     OptixAccelBufferSizes ias_buffer_sizes;
@@ -1038,9 +1038,8 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 &ias_buffer_sizes
                 ) );
 
-    CUdeviceptr d_temp_buffer;
     CUDA_CHECK( cudaMalloc(
-                reinterpret_cast<void**>( &d_temp_buffer ),
+                reinterpret_cast<void**>( &md_temp_buffer ),
                 ias_buffer_sizes.tempSizeInBytes
                 ) );
     CUDA_CHECK( cudaMalloc(
@@ -1054,7 +1053,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 &accel_options,
                 &instance_input,
                 1,                  // num build inputs
-                d_temp_buffer,
+                md_temp_buffer,
                 ias_buffer_sizes.tempSizeInBytes,
                 m_d_ias_output_buffer,
                 ias_buffer_sizes.outputSizeInBytes,
@@ -1062,9 +1061,59 @@ void Scene::buildInstanceAccel( int rayTypeCount )
                 nullptr,            // emitted property list
                 0                   // num emitted properties
                 ) );
+}
 
-    CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_temp_buffer ) ) );
-    CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_instances   ) ) );
+void Scene::updateInstanceAccel()
+{
+    const size_t num_instances = m_meshes.size();
+
+    for (size_t i = 0; i < m_meshes.size(); ++i)
+    {
+        auto  mesh = m_meshes[i];
+        auto& optix_instance = m_optix_instances[i];
+        memcpy(optix_instance.transform, mesh->transform.getData(), sizeof(float) * 12);
+    }
+
+    const size_t instances_size_in_bytes = sizeof(OptixInstance) * num_instances;
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(md_instances),
+        m_optix_instances.data(),
+        instances_size_in_bytes,
+        cudaMemcpyHostToDevice
+    ));
+
+    OptixBuildInput instance_input = {};
+    instance_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    instance_input.instanceArray.instances = md_instances;
+    instance_input.instanceArray.numInstances = static_cast<unsigned int>(num_instances);
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    accel_options.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+    OptixAccelBufferSizes ias_buffer_sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        m_context,
+        &accel_options,
+        &instance_input,
+        1, // num build inputs
+        &ias_buffer_sizes
+    ));
+
+    OPTIX_CHECK(optixAccelBuild(
+        m_context,
+        nullptr,                  // CUDA stream
+        &accel_options,
+        &instance_input,
+        1,                  // num build inputs
+        md_temp_buffer,
+        ias_buffer_sizes.tempUpdateSizeInBytes,
+        m_d_ias_output_buffer,
+        ias_buffer_sizes.outputSizeInBytes,
+        &m_ias_handle,
+        nullptr,            // emitted property list
+        0                   // num emitted properties
+    ));
 }
 
 void Scene::createPTXModule()

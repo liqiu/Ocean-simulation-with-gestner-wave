@@ -136,8 +136,8 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWave
 		return;
 	}*/
 	samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
-
-	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	samplePoint = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	meshBuffer.pos[indexVertex] = make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
 	meshBuffer.validityMask[indexVertex] = true;
 
 	if (tx < X && ty < Y) {
@@ -224,13 +224,14 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 
 	float3 samplePoint;
 	unsigned int indexVertex = tx * numSamplesY + ty;
-	if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
+	/*if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
 		meshBuffer.validityMask[indexVertex] = false;
 		meshBuffer.pos[indexVertex] = samplePoint;
 		return;
-	}
-	//samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
-	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	}*/
+	samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
+	samplePoint = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	meshBuffer.pos[indexVertex] = samplePoint;// make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
 	meshBuffer.validityMask[indexVertex] = true;
 }
 
