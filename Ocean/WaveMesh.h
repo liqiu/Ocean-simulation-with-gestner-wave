@@ -59,4 +59,7 @@ private:
 	sutil::Matrix4x4 mTransform;
 
 	std::shared_ptr<ProjectedGrid> mpProjectedGrid;
+
+	int mNumVerts;
+	int mNumTriangles;
 };

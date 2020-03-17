@@ -24,7 +24,7 @@ WaveMesh::WaveMesh(int windowWidth, int windowHeight, int samplesPerPixel) :
     mpMesh = std::make_shared<sutil::MeshGroup>();
 
     mpProjectedGrid = std::make_shared<ProjectedGrid>();
-    mpProjectedGrid->infinite = 2000;
+    mpProjectedGrid->infinite = 100000;
     mpProjectedGrid->samplesU = windowWidth * samplesPerPixel;
     mpProjectedGrid->samplesV = windowHeight * samplesPerPixel;
 }
@@ -43,8 +43,10 @@ WaveMesh::~WaveMesh()
 
 void WaveMesh::generateMesh(float t)
 {
-    size_t verticesByteSize = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV * sizeof(float3);
-    size_t indicesByteSize = 4 * (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 6;
+    mNumVerts = mpProjectedGrid->samplesU * mSamplesPerPixel * mpProjectedGrid->samplesV * mSamplesPerPixel;
+    mNumTriangles = (mpProjectedGrid->samplesU * mSamplesPerPixel - 1) * (mpProjectedGrid->samplesV * mSamplesPerPixel - 1) * 2;
+    size_t verticesByteSize = mNumVerts * sizeof(float3);
+    size_t indicesByteSize = 4 * mNumTriangles * 3;
     size_t waveByteSize = mWaves.size() * sizeof(Wave);
 
     float3* dVertices, * dNormals;
@@ -82,21 +84,21 @@ void WaveMesh::generateMesh(float t)
     BufferView<float3> bvPos;
     bvPos.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.pos);
     bvPos.byte_stride = sizeof(float3);
-    bvPos.count = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
+    bvPos.count = mNumVerts;
     bvPos.elmt_byte_size = sizeof(float3);
     mpMesh->positions.push_back(bvPos);
 
     BufferView<float3> bvNormal;
     bvNormal.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.normal);
     bvNormal.byte_stride = sizeof(float3);
-    bvNormal.count = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
+    bvNormal.count = mNumVerts;
     bvNormal.elmt_byte_size = sizeof(float3);
     mpMesh->normals.push_back(bvNormal);
 
     BufferView<uint32_t> bvIndices;
     bvIndices.data = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     bvIndices.byte_stride = sizeof(uint32_t);
-    bvIndices.count = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 6;
+    bvIndices.count = mNumTriangles * 3;
     bvIndices.elmt_byte_size = sizeof(uint32_t);
     mpMesh->indices.push_back(bvIndices);
 
@@ -119,12 +121,12 @@ void WaveMesh::buildAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
+    triangle_input.triangleArray.numVertices = mNumVerts;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
     triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
-    triangle_input.triangleArray.numIndexTriplets = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = mNumTriangles;
     triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
@@ -168,12 +170,12 @@ void WaveMesh::updateAccelerationStructure(OptixDeviceContext context)
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.numVertices = mpProjectedGrid->samplesU * mpProjectedGrid->samplesV;
+    triangle_input.triangleArray.numVertices = mNumVerts;
     triangle_input.triangleArray.vertexStrideInBytes = sizeof(float3);
     triangle_input.triangleArray.vertexBuffers = reinterpret_cast<CUdeviceptr*>(&mMeshBuffer.pos);
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
-    triangle_input.triangleArray.numIndexTriplets = (mpProjectedGrid->samplesU - 1) * (mpProjectedGrid->samplesV - 1) * 2;
+    triangle_input.triangleArray.numIndexTriplets = mNumTriangles;
     triangle_input.triangleArray.indexBuffer = reinterpret_cast<CUdeviceptr>(mMeshBuffer.indices);
     triangle_input.triangleArray.flags = triangle_input_flags;
     triangle_input.triangleArray.numSbtRecords = 1;

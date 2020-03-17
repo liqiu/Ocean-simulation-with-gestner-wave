@@ -129,15 +129,15 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWave
 
 	float3 samplePoint;
 	unsigned int indexVertex = tx * numSamplesY + ty;
-/*
+
 	if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
 		meshBuffer.validityMask[indexVertex] = false;
 		meshBuffer.pos[indexVertex] = samplePoint;
 		return;
-	}*/
-	samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
-	samplePoint = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
-	meshBuffer.pos[indexVertex] = make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
+	}
+	//samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
+	
+	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);// make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
 	meshBuffer.validityMask[indexVertex] = true;
 
 	if (tx < X && ty < Y) {
@@ -178,20 +178,28 @@ __global__ void calculateNormalDuDv(MeshBuffer meshBuffer, ProjectedGrid project
 		int iyp1 = tx * numSamplesY + ty + 1;
 		int iym1 = tx * numSamplesY + ty - 1;
 
-		float3 xp1 = meshBuffer.pos[ixp1];
-		float3 xm1 = meshBuffer.pos[ixm1];
-		float3 yp1 = meshBuffer.pos[iyp1];
-		float3 ym1 = meshBuffer.pos[iym1];
+		if (meshBuffer.validityMask[ixp1] &&
+			meshBuffer.validityMask[ixm1] &&
+			meshBuffer.validityMask[iyp1] &&
+			meshBuffer.validityMask[iym1])
+		{
+			float3 xp1 = meshBuffer.pos[ixp1];
+			float3 xm1 = meshBuffer.pos[ixm1];
+			float3 yp1 = meshBuffer.pos[iyp1];
+			float3 ym1 = meshBuffer.pos[iym1];
 
-		slope.x = xp1.y - xm1.y;
-		slope.y = yp1.y - ym1.y;
+			slope.x = xp1.y - xm1.y;
+			slope.y = yp1.y - ym1.y;
 
-		diff.x = xp1.x - xm1.x;
-		diff.y = yp1.z - ym1.z;
+			diff.x = xp1.x - xm1.x;
+			diff.y = yp1.z - ym1.z;
+		}
 	}
 
-	float3 normal = normalize(cross(make_float3(0.0f, slope.y, diff.y),
-		make_float3(diff.x, slope.x, 0.0f)));
+	//float3 normal = normalize(cross(make_float3(0.0f, slope.y, diff.y),
+		//make_float3(diff.x, slope.x, 0.0f)));
+	float3 normal = normalize(cross(make_float3(diff.x, slope.x, 0.0f),
+		make_float3(0.0f, slope.y, diff.y)));
 
 	meshBuffer.normal[indexVertex] = normal;
 }
@@ -224,14 +232,14 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 
 	float3 samplePoint;
 	unsigned int indexVertex = tx * numSamplesY + ty;
-	/*if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
+	if (!projectedGrid.intersectXZGrid(tx, ty, &samplePoint)) {
 		meshBuffer.validityMask[indexVertex] = false;
 		meshBuffer.pos[indexVertex] = samplePoint;
 		return;
-	}*/
-	samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
-	samplePoint = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
-	meshBuffer.pos[indexVertex] = samplePoint;// make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
+	}
+	//samplePoint = make_float3((tx - X / 2.0f) * 2000 / X, 0, (ty - Y / 2.0f) * 2000 / Y);
+	//samplePoint = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t); //samplePoint;// make_float3(samplePoint.x - projectedGrid.eye.x, samplePoint.y, samplePoint.z - projectedGrid.eye.z);
 	meshBuffer.validityMask[indexVertex] = true;
 }
 

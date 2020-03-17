@@ -277,7 +277,6 @@ void updateState(sutil::CUDAOutputBuffer<uchar4>& output_buffer, whitted::Launch
 
 void launchSubframe(sutil::CUDAOutputBuffer<uchar4>& output_buffer, const sutil::Scene& scene)
 {
-
     // Launch
     uchar4* result_buffer_data = output_buffer.map();
     params.frame_buffer = result_buffer_data;
@@ -510,21 +509,26 @@ int main(int argc, char* argv[])
         pMesh->addWave(pWave4);
         sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, -685, 0));
         pMesh->setTransform(transform);
+
+
+        scene.addMesh(pMesh->getMesh());
+        scene.calculateAABB();
+        initCameraState(scene);
+
         float3 U, V, W;
         camera.UVWFrame(U, V, W);
         pMesh->updateCamera(camera.eye(), U, V, W);
         pMesh->generateMesh(0.f);
         pMesh->buildAccelerationStructure(scene.context());
 
-        scene.addMesh(pMesh->getMesh());
         scene.buildInstanceAccel();
         scene.createPTXModule();
         scene.createProgramGroups();
         scene.createPipeline();
         scene.createSBT();
-        scene.calculateAABB();
 
-        initCameraState(scene);
+
+        
         initLaunchParams(scene);
 
 
@@ -566,7 +570,7 @@ int main(int argc, char* argv[])
 
                     t = std::chrono::duration<float>(t0 - t00).count();
                     pMesh->updateMesh(t);
-                    pMesh->updateAccelerationStructure(scene.context());
+                    pMesh->buildAccelerationStructure(scene.context());
                     scene.updateInstanceAccel();
 
                     updateState(output_buffer, params);
