@@ -6,6 +6,8 @@
 #include <sutil/Exception.h>
 #include <sutil/vec_math.h>
 
+#include <glm/mat4x4.hpp>
+
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
@@ -24,7 +26,6 @@ WaveMesh::WaveMesh(int windowWidth, int windowHeight, int samplesPerPixel) :
     mpMesh = std::make_shared<sutil::MeshGroup>();
 
     mpProjectedGrid = std::make_shared<ProjectedGrid>();
-    mpProjectedGrid->infinite = 100000;
     mpProjectedGrid->samplesU = windowWidth * samplesPerPixel;
     mpProjectedGrid->samplesV = windowHeight * samplesPerPixel;
 }
@@ -38,11 +39,11 @@ WaveMesh::~WaveMesh()
     CUDA_CHECK(cudaFree((void*)mMeshBuffer.pos));
     CUDA_CHECK(cudaFree((void*)mMeshBuffer.normal));
     CUDA_CHECK(cudaFree((void*)mMeshBuffer.indices));
-    CUDA_CHECK(cudaFree((void*)mMeshBuffer.validityMask));
 }
 
 void WaveMesh::generateMesh(float t)
 {
+    mpProjectedGrid->init();
     mNumVerts = mpProjectedGrid->samplesU * mSamplesPerPixel * mpProjectedGrid->samplesV * mSamplesPerPixel;
     mNumTriangles = (mpProjectedGrid->samplesU * mSamplesPerPixel - 1) * (mpProjectedGrid->samplesV * mSamplesPerPixel - 1) * 2;
     size_t verticesByteSize = mNumVerts * sizeof(float3);
@@ -53,19 +54,27 @@ void WaveMesh::generateMesh(float t)
     bool* dValidityMask;
     uint32_t* dIndices;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dVertices), verticesByteSize));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dValidityMask), verticesByteSize));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dNormals), verticesByteSize));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dIndices), indicesByteSize));
     mMeshBuffer.pos = dVertices;
     mMeshBuffer.normal = dNormals;
     mMeshBuffer.indices = dIndices;
-    mMeshBuffer.validityMask = dValidityMask;
 
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mdWaves), waveByteSize));
     CUDA_CHECK(cudaMemcpy((void*)mdWaves, mWaves.data(), waveByteSize, cudaMemcpyHostToDevice));
 
-    cudaGenerateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves), mWaves.size(),
-        *mpProjectedGrid, t);
+    glm::mat4 projectorMatrix;
+    bool isVisible = mpProjectedGrid->calculateRangeMatrix(projectorMatrix);
+
+    if (isVisible) {
+        mpProjectedGrid->calculateCorners(projectorMatrix);
+        cudaGenerateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves), mWaves.size(),
+            *mpProjectedGrid, t);
+        mpMesh->skipRendering = false;
+    }
+    else {
+        mpMesh->skipRendering = true;
+    }
 
     mpMesh->name = "Wave";
     mpMesh->material_idx.push_back(-1);
@@ -76,8 +85,8 @@ void WaveMesh::generateMesh(float t)
     for (auto wave : mWaves) {
         maxAmplitude = std::max((float)maxAmplitude, wave.amplitude);
     }
-    mpMesh->object_aabb.m_min = make_float3(-mpProjectedGrid->infinite, -maxAmplitude, -mpProjectedGrid->infinite);
-    mpMesh->object_aabb.m_max = make_float3(mpProjectedGrid->infinite, maxAmplitude, mpProjectedGrid->infinite);
+    mpMesh->object_aabb.m_min = make_float3(-2000, -maxAmplitude, -2000);
+    mpMesh->object_aabb.m_max = make_float3(2000, maxAmplitude, 2000);
     mpMesh->world_aabb = mpMesh->object_aabb;
     mpMesh->world_aabb.transform(mTransform);
    
@@ -106,8 +115,18 @@ void WaveMesh::generateMesh(float t)
 
 void WaveMesh::updateMesh(float t)
 {
-    cudaUpdateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves),
-        mWaves.size(), *mpProjectedGrid, t);
+    glm::mat4 projectorMatrix;
+    bool isVisible = mpProjectedGrid->calculateRangeMatrix(projectorMatrix);
+
+    if (isVisible) {
+        mpProjectedGrid->calculateCorners(projectorMatrix);
+        cudaUpdateGridMesh(mMeshBuffer, reinterpret_cast<Wave*>(mdWaves),
+            mWaves.size(), *mpProjectedGrid, t);
+        mpMesh->skipRendering = false;
+    }
+    else {
+        mpMesh->skipRendering = true;
+    }
 }
 
 
@@ -204,16 +223,10 @@ void WaveMesh::updateAccelerationStructure(OptixDeviceContext context)
 void WaveMesh::setTransform(const sutil::Matrix4x4& transform)
 {
     mTransform = transform;
-    mpProjectedGrid->waveHeight = mTransform.getData()[7]; // Assume vertical translation
+    mpProjectedGrid->elevation = mTransform.getData()[7]; // Assume vertical translation
 }
 
-void WaveMesh::updateCamera(const float3& eye, const float3& U, const float3& V, const float3& W)
+void WaveMesh::setCamera(sutil::Camera* pCamera)
 {
-    mpProjectedGrid->eye = eye;
-    mpProjectedGrid->U = U;
-    mpProjectedGrid->V = V;
-    mpProjectedGrid->W = W;
-
-    sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(eye.x, mTransform.getData()[7], eye.z));
-    mpMesh->transform = transform;
+    mpProjectedGrid->pRenderingCamera = pCamera;
 }

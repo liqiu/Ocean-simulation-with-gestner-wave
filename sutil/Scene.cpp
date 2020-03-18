@@ -1003,7 +1003,7 @@ void Scene::buildInstanceAccel( int rayTypeCount )
         optix_instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
         optix_instance.instanceId        = static_cast<unsigned int>( i );
         optix_instance.sbtOffset         = sbt_offset;
-        optix_instance.visibilityMask    = 1;
+        optix_instance.visibilityMask    = !mesh->skipRendering;
         optix_instance.traversableHandle = mesh->gas_handle;
         memcpy( optix_instance.transform, mesh->transform.getData(), sizeof( float ) * 12 );
 
@@ -1071,6 +1071,7 @@ void Scene::updateInstanceAccel()
     {
         auto  mesh = m_meshes[i];
         auto& optix_instance = m_optix_instances[i];
+        optix_instance.visibilityMask = !mesh->skipRendering;
         memcpy(optix_instance.transform, mesh->transform.getData(), sizeof(float) * 12);
     }
 

@@ -29,6 +29,10 @@
 
 #include <sutil/Camera.h>
 
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
+
+
 namespace sutil {
 
 void Camera::UVWFrame(float3& U, float3& V, float3& W) const
@@ -42,6 +46,29 @@ void Camera::UVWFrame(float3& U, float3& V, float3& W) const
     V *= vlen;
     float ulen = vlen * m_aspectRatio;
     U *= ulen;
+}
+
+SUTILAPI glm::mat4 Camera::getInvViewProj(float near, float far)
+{
+    glm::mat4 view = glm::lookAt(glm::vec3(m_eye.x, m_eye.y, m_eye.z),
+        glm::vec3(m_lookat.x, m_lookat.y, m_lookat.z),
+        glm::vec3(m_up.x, m_up.y, m_up.z));
+
+    glm::mat4 proj = glm::perspective(m_fovY * M_PIf / 180.0f, m_aspectRatio, near, far);
+
+    return glm::inverse(proj * view);
+}
+
+SUTILAPI glm::mat4 Camera::getView()
+{
+	return glm::lookAt(glm::vec3(m_eye.x, m_eye.y, m_eye.z),
+        glm::vec3(m_lookat.x, m_lookat.y, m_lookat.z),
+        glm::vec3(m_up.x, m_up.y, m_up.z));
+}
+
+SUTILAPI glm::mat4 Camera::getProj(float near, float far)
+{
+	return glm::perspective(m_fovY * M_PIf / 180.0f, m_aspectRatio, near, far);
 }
 
 } // namespace sutil

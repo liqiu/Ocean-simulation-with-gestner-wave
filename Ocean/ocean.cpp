@@ -236,7 +236,7 @@ void handleCameraUpdate(whitted::LaunchParams& params)
     camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
     params.eye = camera.eye();
     camera.UVWFrame(params.U, params.V, params.W);
-    /*
+    
     std::cerr
         << "Updating camera:\n"
         << "\tU: " << params.U.x << ", " << params.U.y << ", " << params.U.z << std::endl
@@ -244,7 +244,8 @@ void handleCameraUpdate(whitted::LaunchParams& params)
         << "\tW: " << params.W.x << ", " << params.W.y << ", " << params.W.z << std::endl;
         
     std::cerr
-        << "Eye:" << params.eye.x << "," << params.eye.y << "," << params.eye.z << std::endl;*/
+        << "Eye:" << (int)params.eye.x << "\t" << (int)params.eye.y << "\t" << (int)params.eye.z
+        << "\tLookAt:" << (int)camera.lookat().x << "\t" << (int)camera.lookat().y << "\t" << (int)camera.lookat().z << std::endl;
 }
 
 
@@ -535,9 +536,7 @@ int main(int argc, char* argv[])
         scene.calculateAABB();
         initCameraState(scene);
 
-        float3 U, V, W;
-        camera.UVWFrame(U, V, W);
-        pMesh->updateCamera(camera.eye(), U, V, W);
+        pMesh->setCamera(&camera);
         pMesh->generateMesh(0.f);
         pMesh->buildAccelerationStructure(scene.context());
 
@@ -585,12 +584,9 @@ int main(int argc, char* argv[])
                     auto t0 = std::chrono::steady_clock::now();
                     glfwPollEvents();
 
-                    camera.UVWFrame(U, V, W);
-                    pMesh->updateCamera(camera.eye(), U, V, W);
-
                     t = std::chrono::duration<float>(t0 - t00).count();
                     pMesh->updateMesh(t);
-                    pMesh->buildAccelerationStructure(scene.context());
+                    pMesh->updateAccelerationStructure(scene.context());
                     scene.updateInstanceAccel();
 
                     updateState(output_buffer, params);

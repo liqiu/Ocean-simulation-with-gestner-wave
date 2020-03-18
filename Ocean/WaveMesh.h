@@ -5,6 +5,7 @@
 #include "MeshKernel.h"
 
 #include <sutil/Matrix.h>
+#include <sutil/Camera.h>
 
 #include <optix.h>
 
@@ -39,7 +40,7 @@ public:
 	void setTransform(const sutil::Matrix4x4& transform);
 	sutil::Matrix4x4 getTransform() const { return mTransform; }
 
-	void updateCamera(const float3& eye, const float3& U, const float3& V, const float3& W);
+	void setCamera(sutil::Camera* pCamera);
 private:
 
 	std::vector<Wave> mWaves;

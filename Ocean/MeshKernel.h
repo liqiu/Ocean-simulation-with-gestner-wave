@@ -12,7 +12,6 @@ struct MeshBuffer
     float3* pos;
     float3* normal;
     unsigned int* indices;
-    bool* validityMask;
 };
 
 void cudaGenerateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,

@@ -30,5 +30,7 @@ namespace sutil
 
         Aabb                              object_aabb;
         Aabb                              world_aabb;
+
+        bool                              skipRendering = false;
     };
 }

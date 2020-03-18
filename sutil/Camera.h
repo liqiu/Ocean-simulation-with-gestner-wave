@@ -30,6 +30,9 @@
 
 #include <sutil/sutilapi.h>
 #include <sutil/vec_math.h>
+#include <sutil/Matrix.h>
+
+#include <glm/mat4x4.hpp>
 
 
 namespace sutil {
@@ -63,6 +66,9 @@ public:
 
     // UVW forms an orthogonal, but not orthonormal basis!
     SUTILAPI void UVWFrame(float3& U, float3& V, float3& W) const;
+    SUTILAPI glm::mat4 getInvViewProj(float near, float far);
+    SUTILAPI glm::mat4 getView();
+    SUTILAPI glm::mat4 getProj(float near, float far);
 
 private:
     float3 m_eye;

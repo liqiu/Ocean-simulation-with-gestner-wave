@@ -1,7 +1,13 @@
 #pragma once
 
 
+#include "Plane.h"
+
 #include <sutil/vec_math.h>
+#include <sutil/Matrix.h>
+#include <sutil/Camera.h>
+
+#include <glm/vec4.hpp>
 
 #include <vector_types.h>
 #include <vector_functions.h>
@@ -9,58 +15,32 @@
 
 struct ProjectedGrid
 {
-#ifdef __CUDACC__
-	__forceinline__ __device__ float3 cameraRayDirection(int u, int v)
-	{
+	void init();
 
-		const float2 d = 2.0f * make_float2(
-			(static_cast<float>(u)) / static_cast<float>(samplesU),
-			(static_cast<float>(v)) / static_cast<float>(samplesV)
-		) - 1.0f;
-
-		return normalize(d.x * U + d.y * V + W);
-	}
-
-	__forceinline__ __device__ bool intersectXZGrid(int u, int v, float3* point)
-	{
-		float3 L = cameraRayDirection(u, v);
-		float3 N = make_float3(0, 1, 0);
-
-		float denom = dot(L, N);
-		float3 intersection;
-		bool flag = false;
-		if (abs(denom) > 1e-6) {
-			float t = (waveHeight - dot(N, eye)) / denom;
-			if (t > 0) {
-				intersection = eye + t * L;
-				flag = true;
-			}
-		}
-		
-		float3 eyeProjected = make_float3(eye.x, waveHeight, eye.z);
-		float distance = length(intersection - eyeProjected);
-		if (distance > infinite) {
-			flag = false;
-		}
-
-		if (!flag) {
-			intersection = eyeProjected + make_float3(L.x * infinite, waveHeight, L.z * infinite);
-		}
-
-		*point = intersection;
-
-		return flag;
-	}
-#endif
+	bool calculateRangeMatrix(glm::mat4& out_rangeMatrix);
+	glm::vec4 calculateWorldPos(glm::vec2 uv, const glm::mat4& m);
+	void calculateCorners(const glm::mat4& projectorMatrix);
 
 	int samplesU;
 	int samplesV;
 
-	float infinite;
-	float waveHeight;
+	float elevation;
+	float maxDisplacement = 15;
 
-	float3                   eye;
-	float3                   U;
-	float3                   V;
-	float3                   W;
+	float znear = 0.1f;
+	float zfar = 3000.f;
+	float minHeightProjector = 1;
+	float waveMaxElevation;
+
+	Plane upper_bound;
+	Plane lower_bound;
+	Plane plane;
+
+	glm::vec3 up = glm::vec3(0, 1, 0);
+
+	sutil::Camera* pRenderingCamera;
+	sutil::Camera projecting_camera;
+
+	float4 corners[4];
+	float du, dv;
 };
