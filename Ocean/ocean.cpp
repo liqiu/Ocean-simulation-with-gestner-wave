@@ -62,7 +62,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-
+#include <cstdlib>
+#include <ctime>
 
 //#define USE_IAS // WAR for broken direct intersection of GAS on non-RTX cards
 
@@ -396,6 +397,10 @@ void renderImgui(std::chrono::duration<double>& state_update_time,
     sutil::endFrameImGui();
 }
 
+float random()
+{
+    return ((float)rand() / (RAND_MAX));
+}
 //------------------------------------------------------------------------------
 //
 // Main
@@ -472,11 +477,11 @@ int main(int argc, char* argv[])
         scene.buildMeshAccels();
 
         createEnvironmentTexture(envFile);
-
+        
         std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
         pWave->amplitude = 2.f;
-        pWave->direction = 160.f;
-        pWave->waveLength = 40.f;
+        pWave->direction = 1.57f;
+        pWave->waveLength = 5.f;
         pWave->speed = 5 * sqrt(pWave->waveLength);
         pWave->steepness = 0.9f;
 
@@ -502,11 +507,26 @@ int main(int argc, char* argv[])
         pWave4->steepness = 0.9f;
 
         OPTIX_CHECK(optixInit());
+
         std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>(width, height);
-        pMesh->addWave(pWave);
+        /*pMesh->addWave(pWave);
         pMesh->addWave(pWave2);
         pMesh->addWave(pWave3);
-        pMesh->addWave(pWave4);
+        pMesh->addWave(pWave4);*/
+
+        std::srand(std::time(nullptr));
+        for (int i = 0; i < 20; i++)
+        {
+            std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
+            
+            pWave->direction = random() * M_PI * 2 * 0.3f;
+            pWave->amplitude = 0.2f + powf(2.0f, random() * 2.0f) * 0.3f;
+            pWave->waveLength = 1.0f + powf(2.f, 1.f + random()) * 10.f;
+            pWave->speed = 7 * sqrt(pWave->waveLength);
+            pWave->steepness = 0.2 + random() / 1.5;
+            pMesh->addWave(pWave);
+        }
+         
         sutil::Matrix4x4 transform = sutil::Matrix4x4::translate(make_float3(0, -685, 0));
         pMesh->setTransform(transform);
 

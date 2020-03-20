@@ -398,8 +398,12 @@ extern "C" __global__ void __closesthit__radiance()
         float3 env_color = evaluateEnv(params.environmentTexture, R);
 
         float3 sunDir = normalize(sunPosition() - geom.P);
+
         float3 reflectionSun = params.sunColor * pow(max(dot(R, sunDir), 0.0), 64);
         float3 refectionColor = 0.5 * env_color + 1.5 * reflectionSun;
+
+        //float3 reflectionSun = params.sunColor * pow(max(dot(R, sunDir), 0.0), 32);
+        //float3 refectionColor = env_color;// +1.5 * reflectionSun;
 
         const float3 F = schlick(make_float3(0.02f), dot(R,  geom.N));
         result = refectionColor * F + (1.f -F) * refraction_color;
