@@ -148,8 +148,10 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWave
 	if (tx > X || ty > Y) return;
 	unsigned int indexVertex = tx * numSamplesY + ty;
 	float3 samplePoint = calculateSample(&projectedGrid, tx, ty);
-	
-	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+
+	float3 pos = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	meshBuffer.pos[indexVertex] = pos;
+	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
 
 	if (tx < X && ty < Y) {
 		int indexIndices = 6 * (tx * X + ty);
@@ -215,7 +217,7 @@ void cudaGenerateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
 	generateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		projectedGrid, t);
 
-	calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
+	//calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
 }
 
 __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
@@ -232,8 +234,10 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 	if (tx > X || ty > Y) return;
 	unsigned int indexVertex = tx * numSamplesY + ty;
 	float3 samplePoint = calculateSample(&projectedGrid, tx, ty);
-	meshBuffer.pos[indexVertex] = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
-	//meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(samplePoint.x, samplePoint.z), t);
+
+	float3 pos = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	meshBuffer.pos[indexVertex] = pos;
+	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
 }
 
 void cudaUpdateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
@@ -245,5 +249,5 @@ void cudaUpdateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
 
 	updateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		projectedGrid, t);
-	calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
+	//calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
 }
