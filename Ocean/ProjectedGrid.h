@@ -28,8 +28,7 @@ struct ProjectedGrid
 	float maxDisplacement = 15;
 
 	float znear = 0.1f;
-	float zfar = 3000.f;
-	float minHeightProjector = 1;
+	float zfar = 100000.f;
 	float waveMaxElevation;
 
 	Plane upper_bound;
@@ -42,5 +41,6 @@ struct ProjectedGrid
 	sutil::Camera projecting_camera;
 
 	float4 corners[4];
+	float distances[4];
 	float du, dv;
 };

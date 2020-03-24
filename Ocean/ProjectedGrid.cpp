@@ -257,10 +257,12 @@ void ProjectedGrid::calculateCorners(const glm::mat4& projectorMatrix)
 	c[3] = calculateWorldPos(glm::vec2(1.f, 1.f), projectorMatrix);
 
 	glm::vec4 tmp[4];
+	glm::vec3 camPos(pRenderingCamera->eye().x, pRenderingCamera->eye().y, pRenderingCamera->eye().z);
 	for (size_t i = 0; i < 4; i++)
 	{
 		tmp[i] = c[i] / c[i].w;
 		corners[i] = make_float4(c[i].x, c[i].y, c[i].z, c[i].w);
+		distances[i] = length(camPos - glm::vec3(tmp[i]));
 	}
 
 	du = 1.f / (samplesU - 1);

@@ -509,22 +509,23 @@ int main(int argc, char* argv[])
 
         OPTIX_CHECK(optixInit());
 
-        std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>(width, height);
+        std::shared_ptr<WaveMesh> pMesh = std::make_shared<WaveMesh>(1280, 1280);
         /*pMesh->addWave(pWave);
         pMesh->addWave(pWave2);
         pMesh->addWave(pWave3);
         pMesh->addWave(pWave4);*/
 
         std::srand(std::time(nullptr));
-        for (int i = 0; i < 20; i++)
+        int numWaves = 20;
+        for (int i = 0; i < numWaves; i++)
         {
             std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
             
-            pWave->direction = random() * M_PI * 2 * 0.3f;
-            pWave->amplitude = 0.2f + powf(2.0f, random() * 2.0f) * 0.3f;
+            pWave->direction = random() * M_PI * 2;
+            pWave->amplitude = 0.2f + powf(2.0f, random() * 2.0f) * 0.6f;
             pWave->waveLength = 1.0f + powf(2.f, 1.f + random()) * 10.f;
             pWave->speed = 7 * sqrt(pWave->waveLength);
-            pWave->steepness = 0.2 + random() / 1.5;
+            pWave->steepness = 0.8 + random() / 5;
             pMesh->addWave(pWave);
         }
          

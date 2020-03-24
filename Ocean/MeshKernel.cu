@@ -114,24 +114,31 @@ __forceinline__ __device__ float3 calculateGerstnerWavePosition(Wave* waves, int
 	return newPos;
 }
 
-__forceinline__ __device__ float3 calculateSample(ProjectedGrid* projectedGrid, unsigned int tx, unsigned int ty)
+__forceinline__ __device__ float4 calculateSample(ProjectedGrid* projectedGrid, unsigned int tx, unsigned int ty)
 {
 	float4 result;
 	float u = tx * projectedGrid->du;
 	float v = ty * projectedGrid->dv;
-/*
-	result.x = (1.0f - v) * ((1.0f - u) * projectedGrid->corners[0].x + u * projectedGrid->corners[1].x) + 
-		v * ((1.0f - u) * projectedGrid->corners[2].x + u * projectedGrid->corners[3].x);
-	result.z = (1.0f - v) * ((1.0f - u) * projectedGrid->corners[0].z + u * projectedGrid->corners[1].z) + 
-		v * ((1.0f - u) * projectedGrid->corners[2].z + u * projectedGrid->corners[3].z);
-	result.w = (1.0f - v) * ((1.0f - u) * projectedGrid->corners[0].w + u * projectedGrid->corners[1].w) + 
-		v * ((1.0f - u) * projectedGrid->corners[2].w + u * projectedGrid->corners[3].w);*/
+
 	result = (1.0f - v) * ((1.0f - u) * projectedGrid->corners[0] + u * projectedGrid->corners[1]) +
 		v * ((1.0f - u) * projectedGrid->corners[2] + u * projectedGrid->corners[3]);
 
 	result /= result.w;
+	result.w = (1.0f - v) * ((1.0f - u) * projectedGrid->distances[0] + u * projectedGrid->distances[1]) +
+		v * ((1.0f - u) * projectedGrid->distances[2] + u * projectedGrid->distances[3]);
 
-	return make_float3(result);
+	return result;
+}
+
+__forceinline__ __device__ float calculateWaveAttenuation(float d, float dmin, float dmax)
+{
+	// Quadratic curve that is 1 at dmin and 0 at dmax
+	// Constant 1 for less than dmin, constant 0 for more than dmax
+	if (d > dmax) return 0.f;
+	else
+	{
+		return saturate((1.f / ((dmin - dmax) * (dmin - dmax))) * ((d - dmax) * (d - dmax)));
+	}
 }
 
 __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
@@ -147,11 +154,13 @@ __global__ void generateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWave
 
 	if (tx > X || ty > Y) return;
 	unsigned int indexVertex = tx * numSamplesY + ty;
-	float3 samplePoint = calculateSample(&projectedGrid, tx, ty);
+	float4 samplePoint = calculateSample(&projectedGrid, tx, ty);
+	float fade = calculateWaveAttenuation(samplePoint.w, 0, projectedGrid.zfar);
 
-	float3 pos = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	float3 pos = calculateGerstnerWavePosition(waves, numWaves, make_float3(samplePoint), t);
+	pos.y *= fade;
 	meshBuffer.pos[indexVertex] = pos;
-	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
+	//meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
 
 	if (tx < X && ty < Y) {
 		int indexIndices = 6 * (tx * X + ty);
@@ -178,8 +187,8 @@ __global__ void calculateNormalDuDv(MeshBuffer meshBuffer, ProjectedGrid project
 
 	unsigned int indexVertex = tx * numSamplesY + ty;
 
-	float2 slope= make_float2(0.f);
-	float2 diff = make_float2(1.f);
+	float3 v1 = make_float3(0.f, 0.f, 1.f);
+	float3 v2 = make_float3(1.f, 0.f, 0.f);
 	if (tx > 0 && ty > 0 && tx < X && ty < Y)
 	{
 		int ixp1 = (tx + 1) * numSamplesY + ty;
@@ -192,19 +201,16 @@ __global__ void calculateNormalDuDv(MeshBuffer meshBuffer, ProjectedGrid project
 		float3 yp1 = meshBuffer.pos[iyp1];
 		float3 ym1 = meshBuffer.pos[iym1];
 
-		slope.x = xp1.y - xm1.y;
-		slope.y = yp1.y - ym1.y;
+		v1.x = xp1.x - xm1.x;
+		v1.y = xp1.y - xm1.y;
+		v1.z = xp1.z - xm1.z;
 
-		diff.x = xp1.x - xm1.x;
-		diff.y = yp1.z - ym1.z;
+		v2.x = yp1.x - ym1.x;
+		v2.y = yp1.y - ym1.y;
+		v2.z = yp1.z - ym1.z;
 	}
 
-	//float3 normal = normalize(cross(make_float3(0.0f, slope.y, diff.y),
-		//make_float3(diff.x, slope.x, 0.0f)));
-	float3 normal = normalize(cross(make_float3(diff.x, slope.x, 0.0f),
-		make_float3(0.0f, slope.y, diff.y)));
-
-	meshBuffer.normal[indexVertex] = normal;
+	meshBuffer.normal[indexVertex] = cross(v1, v2);
 }
 
 void cudaGenerateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
@@ -217,7 +223,7 @@ void cudaGenerateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
 	generateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		projectedGrid, t);
 
-	//calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
+	calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
 }
 
 __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
@@ -233,11 +239,13 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 
 	if (tx > X || ty > Y) return;
 	unsigned int indexVertex = tx * numSamplesY + ty;
-	float3 samplePoint = calculateSample(&projectedGrid, tx, ty);
+	float4 samplePoint = calculateSample(&projectedGrid, tx, ty);
+	float fade = calculateWaveAttenuation(samplePoint.w, projectedGrid.zfar*0.8, projectedGrid.zfar);
 
-	float3 pos = calculateGerstnerWavePosition(waves, numWaves, samplePoint, t);
+	float3 pos = calculateGerstnerWavePosition(waves, numWaves, make_float3(samplePoint), t);
+	pos.y *= fade;
 	meshBuffer.pos[indexVertex] = pos;
-	meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
+	//meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
 }
 
 void cudaUpdateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
@@ -249,5 +257,5 @@ void cudaUpdateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,
 
 	updateGridMesh << <grid, block, 0, 0 >> > (meshBuffer, waves, numWaves,
 		projectedGrid, t);
-	//calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
+	calculateNormalDuDv << <grid, block, 0, 0 >> > (meshBuffer, projectedGrid);
 }
