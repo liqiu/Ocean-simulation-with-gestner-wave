@@ -522,8 +522,8 @@ int main(int argc, char* argv[])
             std::shared_ptr<Wave> pWave = std::make_shared<Wave>();
             
             pWave->direction = random() * M_PI * 2;
-            pWave->amplitude = 0.2f + powf(2.0f, random() * 2.0f) * 0.6f;
-            pWave->waveLength = 1.0f + powf(2.f, 1.f + random()) * 10.f;
+            pWave->amplitude = 0.2f + powf(2.0f, random() * 2.0f) * 0.65f;
+            pWave->waveLength = 1.0f + powf(2.f, 1.f + random()) * 15.f;
             pWave->speed = 7 * sqrt(pWave->waveLength);
             pWave->steepness = 0.8 + random() / 5;
             pMesh->addWave(pWave);

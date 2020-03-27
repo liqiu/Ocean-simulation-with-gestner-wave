@@ -240,12 +240,14 @@ __global__ void updateGridMesh(MeshBuffer meshBuffer, Wave* waves, int numWaves,
 	if (tx > X || ty > Y) return;
 	unsigned int indexVertex = tx * numSamplesY + ty;
 	float4 samplePoint = calculateSample(&projectedGrid, tx, ty);
-	float fade = calculateWaveAttenuation(samplePoint.w, projectedGrid.zfar*0.8, projectedGrid.zfar);
+	//float fade = 0.2* calculateWaveAttenuation(samplePoint.w, projectedGrid.zfar * 0.3, projectedGrid.zfar);
 
 	float3 pos = calculateGerstnerWavePosition(waves, numWaves, make_float3(samplePoint), t);
-	pos.y *= fade;
+	//pos.y *= fade;
 	meshBuffer.pos[indexVertex] = pos;
-	//meshBuffer.normal[indexVertex] = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
+
+	float3 normal = calculateGerstnerWaveNormal(waves, numWaves, make_float2(pos.x, pos.z), t);
+	//meshBuffer.normal[indexVertex] = normal;// normalize(make_float3(normal.x * fade, normal.y, normal.z * fade));
 }
 
 void cudaUpdateGridMesh(MeshBuffer& meshBuffer, Wave* waves, int numWaves,

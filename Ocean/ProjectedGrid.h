@@ -25,7 +25,7 @@ struct ProjectedGrid
 	int samplesV;
 
 	float elevation;
-	float maxDisplacement = 15;
+	float maxDisplacement = 30;
 
 	float znear = 0.1f;
 	float zfar = 100000.f;
